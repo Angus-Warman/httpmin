@@ -1,6 +1,7 @@
 package httpmin
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io/fs"
 	"log"
@@ -22,6 +23,7 @@ func RunWithEmbedded(folder fs.FS) {
 type Chassis struct {
 	mux         *http.ServeMux
 	muxSet      bool
+	protocol    string
 	ip          string
 	defaultPort string
 	logger      *log.Logger
@@ -31,6 +33,7 @@ type Chassis struct {
 // Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
 func Setup() *Chassis {
 	chassis := &Chassis{
+		protocol:    "http",
 		ip:          "localhost",
 		defaultPort: "8080",
 		logger:      log.Default(),
@@ -121,6 +124,11 @@ func (c *Chassis) WithLogger(logger *log.Logger) *Chassis {
 	return c
 }
 
+func (c *Chassis) UseHTTPS() *Chassis {
+	c.protocol = "https"
+	return c
+}
+
 func readEnvFile() {
 	bytes, err := os.ReadFile(".env")
 
@@ -187,19 +195,41 @@ func (c *Chassis) handlerWithMiddleware() http.Handler {
 	return handler
 }
 
-func (c *Chassis) Run() {
+func (c *Chassis) Serve() error {
 	readEnvFile()
-
-	port := envOrDefault("PORT", c.defaultPort)
-	ip := envOrDefault("IP", c.ip)
-
-	addr := fmt.Sprintf("%v:%v", ip, port)
 
 	handler := c.handlerWithMiddleware()
 
-	fmt.Printf("Serving http://%v:%v\n", ip, port)
+	port := envOrDefault("PORT", c.defaultPort)
+	ip := envOrDefault("IP", c.ip)
+	addr := fmt.Sprintf("%v:%v", ip, port)
 
-	err := http.ListenAndServe(addr, handler)
+	fmt.Printf("Serving %v://%v:%v\n", c.protocol, ip, port)
+
+	if c.protocol == "http" {
+		return http.ListenAndServe(addr, handler)
+	}
+
+	cert, err := createCertificate()
+
+	if err != nil {
+		return err
+	}
+
+	server := http.Server{
+		Addr:    addr,
+		Handler: handler,
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		},
+	}
+
+	return server.ListenAndServeTLS("", "")
+}
+
+// Serves, printing any errors and exiting on a failure
+func (c *Chassis) Run() {
+	err := c.Serve()
 
 	if err != nil {
 		fmt.Println(err.Error())
