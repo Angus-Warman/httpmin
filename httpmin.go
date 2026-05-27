@@ -25,6 +25,7 @@ type Chassis struct {
 	ip          string
 	defaultPort string
 	logger      *log.Logger
+	middlewares []func(http.Handler) http.Handler
 }
 
 // Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
@@ -115,7 +116,7 @@ func (c *Chassis) OnIP(ip string) *Chassis {
 }
 
 // Set as nil to disable logging
-func (c *Chassis) UseLogger(logger *log.Logger) *Chassis {
+func (c *Chassis) WithLogger(logger *log.Logger) *Chassis {
 	c.logger = logger
 	return c
 }
@@ -154,20 +155,36 @@ func envOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-func (c *Chassis) fullHandler() http.Handler {
-	handler := loggingMiddleware(c.mux, c.logger)
-	return handler
+// Applied in registration order
+func (c *Chassis) Use(middleware func(http.Handler) http.Handler) *Chassis {
+	c.middlewares = append(c.middlewares, middleware)
+	return c
 }
 
-func loggingMiddleware(next http.Handler, logger *log.Logger) http.Handler {
-	if logger == nil {
-		return next
+func requestLogger(logger *log.Logger) func(http.Handler) http.Handler {
+	f := func(next http.Handler) http.Handler {
+		fn := func(w http.ResponseWriter, r *http.Request) {
+			logger.Printf("%v %v\n", r.Method, r.URL.Path)
+			next.ServeHTTP(w, r)
+		}
+		return http.HandlerFunc(fn)
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
-		logger.Printf("%v %v\n", r.Method, r.URL.Path)
-	})
+	return f
+}
+
+func (c *Chassis) handlerWithMiddleware() http.Handler {
+	var handler http.Handler = c.mux
+
+	if c.logger != nil {
+		c.Use(requestLogger(c.logger))
+	}
+
+	for i := len(c.middlewares) - 1; i >= 0; i-- {
+		handler = c.middlewares[i](handler)
+	}
+
+	return handler
 }
 
 func (c *Chassis) Run() {
@@ -178,7 +195,7 @@ func (c *Chassis) Run() {
 
 	addr := fmt.Sprintf("%v:%v", ip, port)
 
-	handler := c.fullHandler()
+	handler := c.handlerWithMiddleware()
 
 	fmt.Printf("Serving http://%v:%v\n", ip, port)
 
