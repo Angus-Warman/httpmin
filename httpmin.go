@@ -9,15 +9,14 @@ import (
 	"strings"
 )
 
+// Equivalent to httpmin.Setup().Run()
 func Run() {
-	chassis := Setup()
-	chassis.Run()
+	Setup().Run()
 }
 
+// Equivalent to httpmin.Setup().ServeEmbedded(folder).Run()
 func RunWithEmbedded(folder fs.FS) {
-	chassis := Setup()
-	chassis.ServeEmbedded(folder)
-	chassis.Run()
+	Setup().ServeEmbedded(folder).Run()
 }
 
 type Chassis struct {
@@ -28,6 +27,7 @@ type Chassis struct {
 	logger      *log.Logger
 }
 
+// Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
 func Setup() *Chassis {
 	chassis := &Chassis{
 		ip:          "localhost",
@@ -45,11 +45,13 @@ func (c *Chassis) UseMux(mux *http.ServeMux) *Chassis {
 	return c
 }
 
+// Registers the handler function for the given pattern. Panics if the pattern has already been registered.
 func (c *Chassis) Route(pattern string, handler func(w http.ResponseWriter, r *http.Request)) *Chassis {
 	c.mux.HandleFunc(pattern, handler)
 	return c
 }
 
+// Registers the handler for the given pattern. Panics if the pattern has already been registered.
 func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 	c.mux.Handle(pattern, handler)
 	return c
