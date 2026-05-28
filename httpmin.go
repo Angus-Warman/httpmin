@@ -1,14 +1,19 @@
 package httpmin
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // Equivalent to httpmin.Setup().Run()
@@ -249,6 +254,54 @@ func printAddresses(protocol, ip, port string) {
 	}
 }
 
+func listenAndServeProtocol(server *http.Server) error {
+	if server.TLSConfig != nil {
+		return server.ListenAndServeTLS("", "")
+	}
+
+	return server.ListenAndServe()
+}
+
+func serveWithIntercept(server *http.Server) error {
+	// Collect errors
+	serverErr := make(chan error, 1)
+
+	// Intercept OS signals
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	// Run the server
+	go func() {
+		err := listenAndServeProtocol(server)
+
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	// Block until server error or signal
+	select {
+	case err := <-serverErr:
+		return err
+	case sig := <-quit:
+		fmt.Printf("signal %v, shutting down...\n", sig)
+	}
+
+	// Give in-flight requests time to complete
+	timeout := 2 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	err := server.Shutdown(ctx)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("goodbye")
+	return nil
+}
+
 func (c *Chassis) Serve() error {
 	readEnvFile()
 
@@ -261,7 +314,8 @@ func (c *Chassis) Serve() error {
 	printAddresses(c.protocol, ip, port)
 
 	if c.protocol == "http" {
-		return http.ListenAndServe(addr, handler)
+		server := &http.Server{Addr: addr, Handler: handler}
+		return serveWithIntercept(server)
 	}
 
 	cert, err := createCertificate()
@@ -270,7 +324,7 @@ func (c *Chassis) Serve() error {
 		return err
 	}
 
-	server := http.Server{
+	server := &http.Server{
 		Addr:    addr,
 		Handler: handler,
 		TLSConfig: &tls.Config{
@@ -278,7 +332,7 @@ func (c *Chassis) Serve() error {
 		},
 	}
 
-	return server.ListenAndServeTLS("", "")
+	return serveWithIntercept(server)
 }
 
 // Serves, printing any errors and exiting on a failure
