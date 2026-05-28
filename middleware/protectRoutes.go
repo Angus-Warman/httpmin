@@ -46,20 +46,26 @@ type ProtectRoutesConfig struct {
 }
 
 func (c *ProtectRoutesConfig) isProtected(path string) bool {
+	// Never protect the redirect path
 	if c.Redirect != "" && path == c.Redirect {
 		return false
 	}
 
+	// Check whitelist first
 	if c.PermittedRoutes != "" && strings.HasPrefix(path, c.PermittedRoutes) {
 		return false
 	}
 
 	// If SecuredRoutes is empty, auth all paths.
-	if c.SecuredRoutes != "" && !strings.HasPrefix(path, c.SecuredRoutes) {
-		return false
+	if c.SecuredRoutes == "" {
+		return true
 	}
 
-	return true
+	if strings.HasPrefix(path, c.SecuredRoutes) {
+		return true
+	}
+
+	return false
 }
 
 func (c *ProtectRoutesConfig) noCredentials(w http.ResponseWriter, r *http.Request) {
