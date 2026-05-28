@@ -177,6 +177,8 @@ func serveWithIntercept(server *http.Server) error {
 func (c *Chassis) Serve() error {
 	readEnvFile()
 
+	c.addDefaultMiddleWare()
+
 	handler := c.handlerWithMiddleware()
 
 	port := envOrDefault("PORT", c.defaultPort)

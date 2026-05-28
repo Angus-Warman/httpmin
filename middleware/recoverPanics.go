@@ -1,4 +1,4 @@
-package httpmin
+package middleware
 
 import (
 	"log"
@@ -6,19 +6,8 @@ import (
 	"runtime"
 )
 
-func logRequests(logger *log.Logger) func(http.Handler) http.Handler {
-	f := func(next http.Handler) http.Handler {
-		fn := func(w http.ResponseWriter, r *http.Request) {
-			logger.Printf("%v %v\n", r.Method, r.URL.Path)
-			next.ServeHTTP(w, r)
-		}
-		return http.HandlerFunc(fn)
-	}
-
-	return f
-}
-
-func recoverPanics(logger *log.Logger) func(http.Handler) http.Handler {
+func RecoverPanics(logger *log.Logger) func(http.Handler) http.Handler {
+	// This one is an edge case
 	if logger == nil {
 		logger = log.Default()
 	}

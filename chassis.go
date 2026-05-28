@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+
+	"github.com/Angus-Warman/httpmin/middleware"
 )
 
 type Chassis struct {
@@ -108,19 +110,23 @@ func (c *Chassis) Use(middleware func(http.Handler) http.Handler) *Chassis {
 	return c
 }
 
+func (c *Chassis) addDefaultMiddleWare() {
+	c.Use(middleware.LogRequests(c.logger))
+	c.Use(middleware.RecoverPanics(c.logger)) // Added last
+}
+
 func (c *Chassis) handlerWithMiddleware() http.Handler {
 	var handler http.Handler = c.mux
 
-	if c.logger != nil {
-		c.Use(logRequests(c.logger))
-	}
-
 	for i := len(c.middlewares) - 1; i >= 0; i-- {
-		handler = c.middlewares[i](handler)
-	}
+		mw := c.middlewares[i]
 
-	// Use recoverPanics middleware outermost
-	handler = recoverPanics(c.logger)(handler)
+		if mw == nil {
+			continue
+		}
+
+		handler = mw(handler)
+	}
 
 	return handler
 }
