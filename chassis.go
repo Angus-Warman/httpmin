@@ -112,12 +112,15 @@ func (c *Chassis) handlerWithMiddleware() http.Handler {
 	var handler http.Handler = c.mux
 
 	if c.logger != nil {
-		c.Use(requestLogger(c.logger))
+		c.Use(logRequests(c.logger))
 	}
 
 	for i := len(c.middlewares) - 1; i >= 0; i-- {
 		handler = c.middlewares[i](handler)
 	}
+
+	// Use recoverPanics middleware outermost
+	handler = recoverPanics(c.logger)(handler)
 
 	return handler
 }

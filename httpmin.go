@@ -185,23 +185,22 @@ func (c *Chassis) Serve() error {
 
 	printAddresses(c.protocol, ip, port)
 
-	if c.protocol == "http" {
-		server := &http.Server{Addr: addr, Handler: handler}
-		return serveWithIntercept(server)
-	}
-
-	cert, err := createCertificate()
-
-	if err != nil {
-		return err
-	}
-
 	server := &http.Server{
-		Addr:    addr,
-		Handler: handler,
-		TLSConfig: &tls.Config{
+		Addr:     addr,
+		Handler:  handler,
+		ErrorLog: c.logger,
+	}
+
+	if c.protocol == "https" {
+		cert, err := createCertificate()
+
+		if err != nil {
+			return err
+		}
+
+		server.TLSConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
-		},
+		}
 	}
 
 	return serveWithIntercept(server)
