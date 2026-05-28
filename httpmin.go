@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -195,6 +196,59 @@ func (c *Chassis) handlerWithMiddleware() http.Handler {
 	return handler
 }
 
+func getAddresses(protocol, ip, port string) []string {
+	addresses := []string{}
+
+	if ip != "0.0.0.0" {
+		addresses = append(addresses, fmt.Sprintf("%v://%v:%v", protocol, ip, port))
+		return addresses
+	}
+
+	ifaces, err := net.Interfaces()
+
+	if err != nil {
+		addresses = append(addresses, fmt.Sprintf("%v://%v:%v", protocol, ip, port))
+		return addresses
+	}
+
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.To4() == nil || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
+				continue
+			}
+			addresses = append(addresses, fmt.Sprintf("%v://%v:%v", protocol, ip, port))
+		}
+	}
+
+	return addresses
+}
+
+func printAddresses(protocol, ip, port string) {
+	addresses := getAddresses(protocol, ip, port)
+
+	if len(addresses) == 1 {
+		fmt.Printf("Listening on %v\n", addresses[0])
+		return
+	}
+
+	fmt.Println("Listening on:")
+
+	for _, address := range addresses {
+		fmt.Printf("  %v\n", address)
+	}
+}
+
 func (c *Chassis) Serve() error {
 	readEnvFile()
 
@@ -204,7 +258,7 @@ func (c *Chassis) Serve() error {
 	ip := envOrDefault("IP", c.ip)
 	addr := fmt.Sprintf("%v:%v", ip, port)
 
-	fmt.Printf("Serving %v://%v:%v\n", c.protocol, ip, port)
+	printAddresses(c.protocol, ip, port)
 
 	if c.protocol == "http" {
 		return http.ListenAndServe(addr, handler)
