@@ -18,6 +18,21 @@ type Chassis struct {
 	middlewares []func(http.Handler) http.Handler
 }
 
+// Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
+func Setup() *Chassis {
+	readEnvFile()
+
+	chassis := &Chassis{
+		protocol:    "http",
+		ip:          "localhost",
+		defaultPort: "8080",
+		logger:      log.Default(),
+		mux:         http.DefaultServeMux,
+	}
+
+	return chassis
+}
+
 // Use this before adding other routes
 func (c *Chassis) UseMux(mux *http.ServeMux) *Chassis {
 	c.mux = mux

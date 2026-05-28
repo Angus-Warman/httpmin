@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -26,19 +25,6 @@ func RunWithEmbedded(folder fs.FS) {
 	Setup().ServeEmbedded(folder).Run()
 }
 
-// Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
-func Setup() *Chassis {
-	chassis := &Chassis{
-		protocol:    "http",
-		ip:          "localhost",
-		defaultPort: "8080",
-		logger:      log.Default(),
-		mux:         http.DefaultServeMux,
-	}
-
-	return chassis
-}
-
 func readEnvFile() {
 	bytes, err := os.ReadFile(".env")
 
@@ -47,6 +33,7 @@ func readEnvFile() {
 	}
 
 	for line := range strings.Lines(string(bytes)) {
+		line = strings.TrimSpace(line)
 		key, value, lineOk := strings.Cut(line, "=")
 
 		if !lineOk {
@@ -129,9 +116,9 @@ func printAddresses(protocol, ip, port string) {
 func listenAndServeProtocol(server *http.Server) error {
 	if server.TLSConfig != nil {
 		return server.ListenAndServeTLS("", "")
+	} else {
+		return server.ListenAndServe()
 	}
-
-	return server.ListenAndServe()
 }
 
 func serveWithIntercept(server *http.Server) error {
@@ -175,8 +162,6 @@ func serveWithIntercept(server *http.Server) error {
 }
 
 func (c *Chassis) Serve() error {
-	readEnvFile()
-
 	c.addDefaultMiddleWare()
 
 	handler := c.handlerWithMiddleware()
