@@ -73,7 +73,9 @@ func subFirstDir(root fs.FS) fs.FS {
 	return root
 }
 
-// Trims the top-level folder from paths. Use the following:
+// Trims the top-level folder from paths. Maps requests to "/page" to "/page.html".
+//
+// Use the following:
 //
 // //go:embed all:public
 //
@@ -81,7 +83,7 @@ func subFirstDir(root fs.FS) fs.FS {
 func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
 	folder = subFirstDir(folder)
 
-	c.mux.Handle("/", http.FileServerFS(folder))
+	c.mux.Handle("/", serveEmbeddedFiles(folder))
 	return c
 }
 
