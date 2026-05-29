@@ -162,7 +162,9 @@ func serveWithIntercept(server *http.Server) error {
 }
 
 func (c *Chassis) Serve() error {
-	c.addDefaultMiddleWare()
+	if c.useDefaultMiddleware {
+		c.addDefaultMiddleware()
+	}
 
 	handler := c.handlerWithMiddleware()
 

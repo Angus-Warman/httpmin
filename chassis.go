@@ -9,15 +9,16 @@ import (
 )
 
 type Chassis struct {
-	mux         *http.ServeMux
-	muxSet      bool
-	protocol    string
-	ip          string
-	defaultPort string
-	logger      *log.Logger
-	middlewares []func(http.Handler) http.Handler
-	certFile    string
-	keyFile     string
+	mux                  *http.ServeMux
+	muxSet               bool
+	protocol             string
+	ip                   string
+	defaultPort          string
+	logger               *log.Logger
+	middlewares          []func(http.Handler) http.Handler
+	certFile             string
+	keyFile              string
+	useDefaultMiddleware bool
 }
 
 // Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
@@ -25,11 +26,12 @@ func Setup() *Chassis {
 	readEnvFile()
 
 	chassis := &Chassis{
-		protocol:    "http",
-		ip:          "localhost",
-		defaultPort: "8080",
-		logger:      log.Default(),
-		mux:         http.DefaultServeMux,
+		protocol:             "http",
+		ip:                   "localhost",
+		defaultPort:          "8080",
+		logger:               log.Default(),
+		mux:                  http.DefaultServeMux,
+		useDefaultMiddleware: true,
 	}
 
 	return chassis
@@ -136,7 +138,13 @@ func (c *Chassis) Use(middleware func(http.Handler) http.Handler) *Chassis {
 	return c
 }
 
-func (c *Chassis) addDefaultMiddleWare() {
+// middleware.LogRequests and middleware.RecoverPanics
+func (c *Chassis) UseDefaultMiddleware(use bool) *Chassis {
+	c.useDefaultMiddleware = use
+	return c
+}
+
+func (c *Chassis) addDefaultMiddleware() {
 	c.Use(middleware.LogRequests(c.logger))
 	c.Use(middleware.RecoverPanics(c.logger)) // Added last
 }
