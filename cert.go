@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func createCertificate() (tls.Certificate, error) {
+func selfSignedCertificate() (tls.Certificate, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return tls.Certificate{}, err
@@ -63,4 +63,8 @@ func createCertificate() (tls.Certificate, error) {
 	})
 
 	return tls.X509KeyPair(certPEM, keyPEM)
+}
+
+func certificateFromFiles(certFile, keyFile string) (tls.Certificate, error) {
+	return tls.LoadX509KeyPair(certFile, keyFile)
 }

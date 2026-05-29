@@ -61,6 +61,7 @@ import (
 	"net/http"
 
 	"github.com/Angus-Warman/httpmin"
+	"github.com/Angus-Warman/httpmin/middleware"
 )
 
 func helloWorld(w http.ResponseWriter, r *http.Request) {
@@ -80,14 +81,15 @@ func myCustomMiddleware() func(http.Handler) http.Handler {
 }
 
 func main() {
-	c := httpmin.Setup() // Each call to a httpmin.Chassis can be chained
+	c := httpmin.Setup()
 
 	c.OnPort("8081") // Port comes from: env variables, .env file, this function, "8080" (in that order)
-	c.Route("/", helloWorld)
+	c.Route("/hello", helloWorld).Route("/world", helloWorld) // httpmin.Chassis call chaining
 	c.ServeFolder("public") // Not embedded
+	c.Use(middleware.Cors())
 	c.Use(myCustomMiddleware())
 	c.PublicIP() // Listen on "0.0.0.0"
-	c.UseHTTPS() // Self-signed
+	c.UseSelfSignedHTTPS()
 
 	c.Run()
 }

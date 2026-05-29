@@ -16,6 +16,8 @@ type Chassis struct {
 	defaultPort string
 	logger      *log.Logger
 	middlewares []func(http.Handler) http.Handler
+	certFile    string
+	keyFile     string
 }
 
 // Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
@@ -116,7 +118,14 @@ func (c *Chassis) WithLogger(logger *log.Logger) *Chassis {
 	return c
 }
 
-func (c *Chassis) UseHTTPS() *Chassis {
+func (c *Chassis) UseHTTPS(certFile, keyFile string) *Chassis {
+	c.protocol = "https"
+	c.certFile = certFile
+	c.keyFile = keyFile
+	return c
+}
+
+func (c *Chassis) UseSelfSignedHTTPS() *Chassis {
 	c.protocol = "https"
 	return c
 }

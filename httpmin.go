@@ -179,7 +179,14 @@ func (c *Chassis) Serve() error {
 	}
 
 	if c.protocol == "https" {
-		cert, err := createCertificate()
+		var cert tls.Certificate
+		var err error
+
+		if c.certFile != "" && c.keyFile != "" {
+			cert, err = certificateFromFiles(c.certFile, c.keyFile)
+		} else {
+			cert, err = selfSignedCertificate()
+		}
 
 		if err != nil {
 			return err
