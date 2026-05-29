@@ -177,6 +177,16 @@ func (c *Chassis) handlerWithMiddleware() http.Handler {
 	return handler
 }
 
+func envOrDefault(key, defaultValue string) string {
+	value, ok := os.LookupEnv(key)
+
+	if ok {
+		return value
+	}
+
+	return defaultValue
+}
+
 // Builds the underlying http.Server, sets up HTTPS as configured, and uses serverWithIntercept()
 func (c *Chassis) Serve() error {
 	if c.useDefaultMiddleware {
