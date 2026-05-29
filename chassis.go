@@ -21,7 +21,7 @@ type Chassis struct {
 	useDefaultMiddleware bool
 }
 
-// Uses log.Default(), http.DefaultServeMux, port 8080 and localhost
+// Reads environment variables, uses log.Default(), http.DefaultServeMux, port 8080 and localhost
 func Setup() *Chassis {
 	readEnvFile()
 
@@ -77,13 +77,12 @@ func subFirstDir(root fs.FS) fs.FS {
 	return root
 }
 
-// Trims the top-level folder from paths. Maps requests to "/page" to "/page.html".
+// Trims the top-level folder from paths. Maps requests from "/page" to "/page.html".
 //
 // Use the following:
 //
-// //go:embed all:public
-//
-// var publicFiles embed.FS
+//	//go:embed all:public
+//	var publicFiles embed.FS
 func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
 	folder = subFirstDir(folder)
 
@@ -96,7 +95,7 @@ func (c *Chassis) ServeFolder(path string) *Chassis {
 	return c
 }
 
-// Alternatively, use a "PORT" env variable
+// The port used comes from: env variables, .env file, this function, "8080" (in that order)
 func (c *Chassis) OnPort(port string) *Chassis {
 	c.defaultPort = port
 	return c

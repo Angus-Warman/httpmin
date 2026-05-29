@@ -1,3 +1,44 @@
+// httpmin includes the bare minimum for a sensible HTTP service, environment variables, request logging, optional HTTPS, optional middleware.
+//
+// Two goals: minimal boilerplate, configuration with minimal fuss.
+//
+// # Hello World
+//
+//	package main
+//
+//	import (
+//		"net/http"
+//
+//		"github.com/Angus-Warman/httpmin"
+//	)
+//
+//	func helloWorld(w http.ResponseWriter, r *http.Request) {
+//		w.Write([]byte("Hello World"))
+//	}
+//
+//	func main() {
+//		httpmin.Setup().Route("/", helloWorld).Run()
+//	}
+//
+// # Serve static files
+//
+//	package main
+//
+//	import (
+//		"net/http"
+//		"embed"
+//
+//		"github.com/Angus-Warman/httpmin"
+//	)
+//
+//	//go:embed all:public
+//	var publicFiles embed.FS
+//
+//	func main() {
+//		httpmin.Setup().ServeEmbedded(publicFiles).Run()
+//	}
+//
+// See github.com/Angus-Warman/httpmin/tree/main/_examples for in-depth demos
 package httpmin
 
 import (
@@ -5,7 +46,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -18,11 +58,6 @@ import (
 // Equivalent to httpmin.Setup().Run()
 func Run() {
 	Setup().Run()
-}
-
-// Equivalent to httpmin.Setup().ServeEmbedded(folder).Run()
-func RunWithEmbedded(folder fs.FS) {
-	Setup().ServeEmbedded(folder).Run()
 }
 
 func readEnvFile() {
