@@ -20,6 +20,7 @@ type Chassis struct {
 	middlewares          []func(http.Handler) http.Handler
 	certFile             string
 	keyFile              string
+	certFolder           string
 	useDefaultMiddleware bool
 }
 
@@ -157,6 +158,13 @@ func (c *Chassis) UseSelfSignedHTTPS() *Chassis {
 	return c
 }
 
+// Folder will contain cert.pem and key.pem after generating
+func (c *Chassis) UseSelfSignedHTTPSFromFolder(certFolder string) *Chassis {
+	c.protocol = "https"
+	c.certFolder = certFolder
+	return c
+}
+
 // Applied in registration order
 func (c *Chassis) Use(middleware func(http.Handler) http.Handler) *Chassis {
 	c.middlewares = append(c.middlewares, middleware)
@@ -224,6 +232,8 @@ func (c *Chassis) Serve() error {
 
 		if c.certFile != "" && c.keyFile != "" {
 			cert, err = certificateFromFiles(c.certFile, c.keyFile)
+		} else if c.certFolder != "" {
+			cert, err = selfSignedFromFolder(c.certFolder)
 		} else {
 			cert, err = selfSignedCertificate()
 		}

@@ -8,6 +8,8 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -67,4 +69,60 @@ func selfSignedCertificate() (tls.Certificate, error) {
 
 func certificateFromFiles(certFile, keyFile string) (tls.Certificate, error) {
 	return tls.LoadX509KeyPair(certFile, keyFile)
+}
+
+// If cert.pem and key.pem exist, use those. Otherwise, generate new cert.
+func selfSignedFromFolder(path string) (tls.Certificate, error) {
+	certFile := filepath.Join(path, "cert.pem")
+	keyFile := filepath.Join(path, "key.pem")
+
+	_, certErr := os.Stat(certFile)
+	_, keyErr := os.Stat(keyFile)
+
+	// If both files exist, use them
+	if certErr == nil && keyErr == nil {
+		return certificateFromFiles(certFile, keyFile)
+	}
+
+	cert, err := selfSignedCertificate()
+
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Certificate[0],
+	})
+
+	privKey, ok := cert.PrivateKey.(*rsa.PrivateKey)
+
+	if !ok {
+		return tls.Certificate{}, err
+	}
+
+	keyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privKey),
+	})
+
+	err = os.MkdirAll(path, 0644)
+
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	err = os.WriteFile(certFile, certPEM, 0644)
+
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	err = os.WriteFile(keyFile, keyPEM, 0600) // owner read/write only
+
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	return cert, nil
 }
