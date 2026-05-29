@@ -45,6 +45,7 @@ func Setup() *Chassis {
 	return c
 }
 
+// Read a .env formatted file, setting any environment variables that aren't already set
 func (c *Chassis) EnvFile(path string) *Chassis {
 	readEnvFile(path)
 	return c
@@ -68,41 +69,53 @@ func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 	return c
 }
 
-func subFirstDir(root fs.FS) fs.FS {
+// If root contains exactly one top-level dir and nothing else, substitute it
+func substituteTopLevelDir(root fs.FS) fs.FS {
 	entries, err := fs.ReadDir(root, ".")
 
 	if err != nil {
 		return root
 	}
 
-	for _, e := range entries {
-		if e.IsDir() {
-			subFS, err := fs.Sub(root, e.Name())
-
-			if err != nil {
-				return root
-			}
-
-			return subFS
-		}
+	if len(entries) != 1 {
+		return root
 	}
 
-	return root
+	entry := entries[0]
+
+	if !entry.IsDir() {
+		return root
+	}
+
+	newRoot, err := fs.Sub(root, entry.Name())
+
+	if err != nil {
+		return root
+	}
+
+	return newRoot
 }
 
-// Trims the top-level folder from paths. Maps requests from "/page" to "/page.html".
-//
-// Use the following:
+// Serves files from embedded directory. Also maps requests from "/page" to "/page.html".
 //
 //	//go:embed all:public
 //	var publicFiles embed.FS
+//	c.ServeEmbedded(publicFiles)
 func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
-	folder = subFirstDir(folder)
+
+	// By default, embedded folder is expecting a path like "/public/index.html"
+	// Moving down one level results in normal behaviour
+	folder = substituteTopLevelDir(folder)
 
 	c.mux.Handle("/", serveEmbeddedFiles(folder))
 	return c
 }
 
+// Serves files from directory
+//
+// Identical to:
+//
+//	c.mux.Handle("/", http.FileServer(http.Dir(path)))
 func (c *Chassis) ServeFolder(path string) *Chassis {
 	c.mux.Handle("/", http.FileServer(http.Dir(path)))
 	return c
