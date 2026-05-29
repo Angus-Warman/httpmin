@@ -6,23 +6,24 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/Angus-Warman/httpmin"
 	"github.com/Angus-Warman/httpmin/middleware"
 )
 
 func isValid(username, password string) bool {
-	return true
+	return username != "" && password != ""
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	username := r.PostForm.Get("username")
-	password := r.PostForm.Get("password")
+	username := r.Form.Get("username")
+	password := r.Form.Get("password")
 
 	if !isValid(username, password) {
-		w.WriteHeader(403)
+		http.Error(w, "Invalid credentials", 403)
 		return
 	}
 
@@ -33,7 +34,18 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(200)
+	returnTo := r.Form.Get("returnTo")
+
+	if isSafeRedirect(returnTo) {
+		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func isSafeRedirect(s string) bool {
+	return strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "//")
 }
 
 //go:embed all:public

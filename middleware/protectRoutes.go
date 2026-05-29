@@ -70,7 +70,7 @@ func (c *ProtectRoutesConfig) isProtected(path string) bool {
 
 func (c *ProtectRoutesConfig) noCredentials(w http.ResponseWriter, r *http.Request) {
 	if c.Redirect != "" {
-		http.Redirect(w, r, c.Redirect, http.StatusFound)
+		c.redirect(w, r)
 		return
 	}
 
@@ -79,11 +79,19 @@ func (c *ProtectRoutesConfig) noCredentials(w http.ResponseWriter, r *http.Reque
 
 func (c *ProtectRoutesConfig) invalidCredentials(w http.ResponseWriter, r *http.Request) {
 	if c.Redirect != "" {
-		http.Redirect(w, r, c.Redirect, http.StatusFound)
+		c.redirect(w, r)
 		return
 	}
 
-	http.Error(w, "Unauthorized", 403)
+	http.Error(w, "Forbidden", 403)
+}
+
+func (c *ProtectRoutesConfig) redirect(w http.ResponseWriter, r *http.Request) {
+	returnTo := r.URL.Path
+
+	redirectURL := fmt.Sprintf("%v?returnTo=%v", c.Redirect, returnTo)
+
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 // Panics if JWT_SECRET environment variable not set
