@@ -1,19 +1,21 @@
 package httpmin
 
 import (
+	"crypto/tls"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/Angus-Warman/httpmin/middleware"
 )
 
 type Chassis struct {
 	mux                  *http.ServeMux
-	muxSet               bool
 	protocol             string
 	ip                   string
-	defaultPort          string
+	port                 string
 	logger               *log.Logger
 	middlewares          []func(http.Handler) http.Handler
 	certFile             string
@@ -21,20 +23,31 @@ type Chassis struct {
 	useDefaultMiddleware bool
 }
 
-// Reads environment variables, uses log.Default(), http.DefaultServeMux, port 8080 and localhost
-func Setup() *Chassis {
-	readEnvFile()
-
+// Plain option, will serve http://localhost:8080 unless env variables specify
+func New() *Chassis {
 	chassis := &Chassis{
 		protocol:             "http",
 		ip:                   "localhost",
-		defaultPort:          "8080",
+		port:                 "8080",
 		logger:               log.Default(),
-		mux:                  http.DefaultServeMux,
-		useDefaultMiddleware: true,
+		mux:                  http.NewServeMux(),
+		useDefaultMiddleware: false,
 	}
 
 	return chassis
+}
+
+// Default option, reads .env file, logs incoming requests, handles panics, will serve http://localhost:8080 unless env variables specify
+func Setup() *Chassis {
+	c := New()
+	c.EnvFile(".env")
+	c.useDefaultMiddleware = true
+	return c
+}
+
+func (c *Chassis) EnvFile(path string) *Chassis {
+	readEnvFile(path)
+	return c
 }
 
 // Use this before adding other routes
@@ -97,7 +110,7 @@ func (c *Chassis) ServeFolder(path string) *Chassis {
 
 // The port used comes from: env variables, .env file, this function, "8080" (in that order)
 func (c *Chassis) OnPort(port string) *Chassis {
-	c.defaultPort = port
+	c.port = port
 	return c
 }
 
@@ -162,4 +175,56 @@ func (c *Chassis) handlerWithMiddleware() http.Handler {
 	}
 
 	return handler
+}
+
+// Builds the underlying http.Server, sets up HTTPS as configured, and uses serverWithIntercept()
+func (c *Chassis) Serve() error {
+	if c.useDefaultMiddleware {
+		c.addDefaultMiddleware()
+	}
+
+	handler := c.handlerWithMiddleware()
+
+	port := envOrDefault("PORT", c.port)
+	ip := envOrDefault("IP", c.ip)
+	addr := fmt.Sprintf("%v:%v", ip, port)
+
+	server := &http.Server{
+		Addr:     addr,
+		Handler:  handler,
+		ErrorLog: c.logger,
+	}
+
+	if c.protocol == "https" {
+		var cert tls.Certificate
+		var err error
+
+		if c.certFile != "" && c.keyFile != "" {
+			cert, err = certificateFromFiles(c.certFile, c.keyFile)
+		} else {
+			cert, err = selfSignedCertificate()
+		}
+
+		if err != nil {
+			return err
+		}
+
+		server.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}
+	}
+
+	printAddresses(c.protocol, ip, port)
+
+	return serveWithIntercept(server)
+}
+
+// Serves, printing any errors and exiting on a failure
+func (c *Chassis) Run() {
+	err := c.Serve()
+
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
 }
