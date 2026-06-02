@@ -1,38 +1,55 @@
 package httpmin
 
 import (
+	"bytes"
+	"compress/gzip"
+	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
+var serverStartTime = time.Now().UTC().Round(time.Second)
+var serverStartTimeString = serverStartTime.Format(http.TimeFormat)
+
 type embeddedFileServer struct {
-	folder   fs.FS
-	fallback http.Handler
-	lookup   map[string]string
+	folder       fs.FS
+	fallback     http.Handler
+	pathLookup   map[string]string
+	gzippedFiles map[string][]byte
 }
 
 func (h *embeddedFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	p := r.URL.Path
-
-	// index
-	if p == "" || p == "/" {
-		h.fallback.ServeHTTP(w, r)
+	if useStatusNotModified(r) {
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 
-	// real files
-	if filepath.Ext(p) != "" {
-		h.fallback.ServeHTTP(w, r)
-		return
+	acceptEncoding := r.Header.Get("Accept-Encoding")
+
+	gzipAccepted := strings.Contains(acceptEncoding, "gzip") && !strings.Contains(acceptEncoding, "gzip;q=0")
+
+	path := h.getCanonicalPath(r.URL.Path)
+
+	if gzipAccepted {
+		gzippedBytes, ok := h.gzippedFiles[path]
+
+		if ok {
+			serveGzipped(w, r, gzippedBytes)
+			return
+		}
+
+		// Fall-through intentional
 	}
 
-	realPath, ok := h.lookup[p]
-
-	if ok {
+	// If path changed, clone request and continue with correct path
+	if path != r.URL.Path {
 		r2 := r.Clone(r.Context())
-		r2.URL.Path = realPath
+		r2.URL.Path = path
 		h.fallback.ServeHTTP(w, r2)
 		return
 	}
@@ -40,36 +57,213 @@ func (h *embeddedFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.fallback.ServeHTTP(w, r)
 }
 
-func (h *embeddedFileServer) buildLookup() {
-	fs.WalkDir(h.folder, ".", func(path string, d fs.DirEntry, err error) error {
+func useStatusNotModified(r *http.Request) bool {
+	ifModifiedSinceStr := r.Header.Get("If-Modified-Since")
+
+	if ifModifiedSinceStr == "" {
+		return false
+	}
+
+	ifModifiedSince, err := http.ParseTime(ifModifiedSinceStr)
+
+	if err != nil {
+		return false
+	}
+
+	stale := ifModifiedSince.Before(serverStartTime)
+
+	return !stale
+}
+
+func serveGzipped(w http.ResponseWriter, r *http.Request, gzippedBytes []byte) {
+	contentType := mime.TypeByExtension(filepath.Ext(r.URL.Path))
+
+	// Standard
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(gzippedBytes)))
+
+	// Zip
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Add("Vary", "Accept-Encoding")
+
+	// Caching
+	// While this isn't technically correct, it is impossible for any files to be modified after the server is started
+	// So this has a useful caching effect
+	w.Header().Set("Last-Modified", serverStartTimeString)
+
+	w.WriteHeader(http.StatusOK)
+
+	if r.Method == http.MethodHead {
+		return
+	}
+
+	w.Write(gzippedBytes)
+}
+
+func (h *embeddedFileServer) getCanonicalPath(original string) string {
+	if original == "" || original == "/" {
+		return "/index.html"
+	}
+
+	if strings.HasSuffix(original, "/") {
+		return original + "index.html"
+	}
+
+	realPath, ok := h.pathLookup[original]
+
+	if ok {
+		return realPath
+	}
+
+	return original
+}
+
+func (h *embeddedFileServer) build() error {
+	return fs.WalkDir(h.folder, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			return err
 		}
 
 		if d.IsDir() {
 			return nil
 		}
 
+		// Build lookup for HTML files only
 		ext := filepath.Ext(path)
 
 		if ext == ".html" {
 			lookupPath := "/" + strings.TrimSuffix(path, ".html")
-			h.lookup[lookupPath] = "/" + path
+			h.pathLookup[lookupPath] = "/" + path
 		}
+
+		// Pre-gzip files
+		if shouldZip(ext) {
+			file, err := h.folder.Open(path)
+
+			if err != nil {
+				return err
+			}
+
+			defer file.Close()
+
+			fileBytes, err := io.ReadAll(file)
+
+			if err != nil {
+				return err
+			}
+
+			key := "/" + path
+
+			gzippedBytes, err := gzipBytes(fileBytes)
+
+			if err != nil {
+				return err
+			}
+
+			if len(gzippedBytes) >= len(fileBytes) {
+				// No point in serving zipped
+				return nil
+			}
+
+			h.gzippedFiles[key] = gzippedBytes
+		}
+
 		return nil
 	})
 }
 
-func serveEmbeddedFiles(folder fs.FS) http.Handler {
-	fallback := http.FileServerFS(folder)
+func shouldZip(ext string) bool {
+	switch ext {
+	case ".html", ".htm", ".js", ".mjs", ".cjs", ".css",
+		".json", ".jsonld", ".txt", ".md", ".xml", ".rss",
+		".svg", ".csv", ".wasm", ".map":
+		return true
+	default:
+		return false
+	}
+}
 
-	handler := &embeddedFileServer{
-		folder:   folder,
-		fallback: fallback,
-		lookup:   make(map[string]string),
+func gzipBytes(fileBytes []byte) ([]byte, error) {
+	var buf bytes.Buffer
+
+	zw := gzip.NewWriter(&buf)
+
+	_, err := zw.Write(fileBytes)
+
+	if err != nil {
+		zw.Close()
+		return nil, err
 	}
 
-	handler.buildLookup()
+	err = zw.Close() // Flushes
+
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+func setLastModified(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+
+		// While this isn't technically correct, it is impossible for any files to be modified after the server is started
+		// So this has a useful caching effect
+		w.Header().Set("Last-Modified", serverStartTimeString)
+
+		next.ServeHTTP(w, r)
+	}
+
+	return http.HandlerFunc(fn)
+}
+
+// If root contains exactly one top-level dir and nothing else, substitute it
+func substituteTopLevelDir(root fs.FS) fs.FS {
+	entries, err := fs.ReadDir(root, ".")
+
+	if err != nil {
+		return root
+	}
+
+	if len(entries) != 1 {
+		return root
+	}
+
+	entry := entries[0]
+
+	if !entry.IsDir() {
+		return root
+	}
+
+	newRoot, err := fs.Sub(root, entry.Name())
+
+	if err != nil {
+		return root
+	}
+
+	return newRoot
+}
+
+func serveEmbeddedFiles(folder fs.FS) http.Handler {
+	// By default, embedded folder is expecting a path like "/public/index.html"
+	// Moving down one level results in normal behaviour
+	folder = substituteTopLevelDir(folder)
+
+	fallback := http.FileServerFS(folder)
+	fallback = setLastModified(fallback)
+
+	handler := &embeddedFileServer{
+		folder:       folder,
+		fallback:     fallback,
+		pathLookup:   make(map[string]string),
+		gzippedFiles: make(map[string][]byte),
+	}
+
+	err := handler.build()
+
+	if err != nil {
+		panic(err)
+	}
 
 	return handler
 }

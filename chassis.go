@@ -70,44 +70,16 @@ func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 	return c
 }
 
-// If root contains exactly one top-level dir and nothing else, substitute it
-func substituteTopLevelDir(root fs.FS) fs.FS {
-	entries, err := fs.ReadDir(root, ".")
-
-	if err != nil {
-		return root
-	}
-
-	if len(entries) != 1 {
-		return root
-	}
-
-	entry := entries[0]
-
-	if !entry.IsDir() {
-		return root
-	}
-
-	newRoot, err := fs.Sub(root, entry.Name())
-
-	if err != nil {
-		return root
-	}
-
-	return newRoot
-}
-
-// Serves files from embedded directory. Also maps requests from "/page" to "/page.html".
+// Serves files from embedded directory.
+//
+// Gzips valid files and serves compressed requests.
+//
+// Maps requests from "/page" to "/page.html".
 //
 //	//go:embed all:public
 //	var publicFiles embed.FS
 //	c.ServeEmbedded(publicFiles)
 func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
-
-	// By default, embedded folder is expecting a path like "/public/index.html"
-	// Moving down one level results in normal behaviour
-	folder = substituteTopLevelDir(folder)
-
 	c.mux.Handle("/", serveEmbeddedFiles(folder))
 	return c
 }
