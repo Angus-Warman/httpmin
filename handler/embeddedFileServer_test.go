@@ -9,6 +9,26 @@ import (
 //go:embed all:testdata
 var publicFiles embed.FS
 
+func TestIndexServed(t *testing.T) {
+	handler, err := EmbeddedFileServer(publicFiles)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("GET", "/", nil)
+	r.Header.Add("Accept-Encoding", "gzip")
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, r)
+
+	res := w.Result()
+
+	if res.StatusCode != 200 {
+		t.Fatal(res.StatusCode, "should be 200")
+	}
+}
+
 func TestCleanURLHandling(t *testing.T) {
 	handler, err := EmbeddedFileServer(publicFiles)
 

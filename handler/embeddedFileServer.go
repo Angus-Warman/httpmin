@@ -61,10 +61,10 @@ func (h *embeddedFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	gzipAccepted := strings.Contains(acceptEncoding, "gzip") && !strings.Contains(acceptEncoding, "gzip;q=0")
 
-	path := h.getCanonicalPath(r.URL.Path)
+	canonical := h.getCanonicalPath(r.URL.Path)
 
 	if gzipAccepted {
-		gzippedBytes, ok := h.gzippedFiles[path]
+		gzippedBytes, ok := h.gzippedFiles[canonical]
 
 		if ok {
 			serveGzipped(w, r, gzippedBytes)
@@ -74,10 +74,13 @@ func (h *embeddedFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Fall-through intentional
 	}
 
-	// If path changed, clone request and continue with correct path
-	if path != r.URL.Path {
+	// If lookup exists, clone request and continue with correct path
+	// This doesn't use canonical, since index.html handling is dealt with by fallback
+	realPath, ok := h.pathLookup[r.URL.Path]
+
+	if ok {
 		r2 := r.Clone(r.Context())
-		r2.URL.Path = path
+		r2.URL.Path = realPath
 		h.fallback.ServeHTTP(w, r2)
 		return
 	}
