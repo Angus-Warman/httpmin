@@ -174,8 +174,8 @@ func envOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-// Builds the underlying http.Server, sets up HTTPS as configured, and uses serverWithIntercept()
-func (c *Chassis) Serve() error {
+// Builds the underlying http.Server and sets up HTTPS as configured
+func (c *Chassis) Server() (*http.Server, error) {
 	if c.useDefaultMiddleware {
 		c.addDefaultMiddleware()
 	}
@@ -205,7 +205,7 @@ func (c *Chassis) Serve() error {
 		}
 
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		server.TLSConfig = &tls.Config{
@@ -213,7 +213,20 @@ func (c *Chassis) Serve() error {
 		}
 	}
 
-	printAddresses(c.protocol, ip, port)
+	return server, nil
+}
+
+// Builds the underlying http.Server, sets up HTTPS as configured, and serves
+//
+// Uses serveWithIntercept to catch signals and perform a graceful shutdown
+func (c *Chassis) Serve() error {
+	server, err := c.Server()
+
+	if err != nil {
+		return err
+	}
+
+	printAddresses(server)
 
 	return serveWithIntercept(server)
 }

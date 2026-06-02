@@ -3,9 +3,23 @@ package httpmin
 import (
 	"fmt"
 	"net"
+	"net/http"
+	"strings"
 )
 
-func printAddresses(protocol, ip, port string) {
+func printAddresses(server *http.Server) {
+	ip, port, ok := strings.Cut(server.Addr, ":")
+
+	if !ok {
+		return
+	}
+
+	protocol := "http"
+
+	if server.TLSConfig != nil {
+		protocol = "https"
+	}
+
 	addresses := getAddresses(protocol, ip, port)
 
 	if len(addresses) == 1 {
