@@ -12,7 +12,7 @@ import (
 )
 
 type Chassis struct {
-	mux                  *http.ServeMux
+	Mux                  *http.ServeMux
 	protocol             string
 	ip                   string
 	port                 string
@@ -31,7 +31,7 @@ func New() *Chassis {
 		ip:                   "localhost",
 		port:                 "8080",
 		logger:               log.Default(),
-		mux:                  http.NewServeMux(),
+		Mux:                  http.NewServeMux(),
 		useDefaultMiddleware: false,
 	}
 
@@ -52,21 +52,15 @@ func (c *Chassis) EnvFile(path string) *Chassis {
 	return c
 }
 
-// Use this before adding other routes
-func (c *Chassis) UseMux(mux *http.ServeMux) *Chassis {
-	c.mux = mux
-	return c
-}
-
 // Registers the handler function for the given pattern. Panics if the pattern has already been registered.
 func (c *Chassis) Route(pattern string, handler func(w http.ResponseWriter, r *http.Request)) *Chassis {
-	c.mux.HandleFunc(pattern, handler)
+	c.Mux.HandleFunc(pattern, handler)
 	return c
 }
 
 // Registers the handler for the given pattern. Panics if the pattern has already been registered.
 func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
-	c.mux.Handle(pattern, handler)
+	c.Mux.Handle(pattern, handler)
 	return c
 }
 
@@ -80,7 +74,7 @@ func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 //	var publicFiles embed.FS
 //	c.ServeEmbedded(publicFiles)
 func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
-	c.mux.Handle("/", serveEmbeddedFiles(folder))
+	c.Mux.Handle("/", serveEmbeddedFiles(folder))
 	return c
 }
 
@@ -90,7 +84,7 @@ func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
 //
 //	c.mux.Handle("/", http.FileServer(http.Dir(path)))
 func (c *Chassis) ServeFolder(path string) *Chassis {
-	c.mux.Handle("/", http.FileServer(http.Dir(path)))
+	c.Mux.Handle("/", http.FileServer(http.Dir(path)))
 	return c
 }
 
@@ -155,7 +149,7 @@ func (c *Chassis) addDefaultMiddleware() {
 }
 
 func (c *Chassis) handlerWithMiddleware() http.Handler {
-	var handler http.Handler = c.mux
+	var handler http.Handler = c.Mux
 
 	for i := len(c.middlewares) - 1; i >= 0; i-- {
 		mw := c.middlewares[i]
