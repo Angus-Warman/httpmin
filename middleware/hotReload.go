@@ -14,6 +14,7 @@ func HotReload() func(http.Handler) http.Handler {
 		fn := func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/__ping" {
 				response.Stream(pingLoop).ServeHTTP(w, r)
+				return
 			}
 
 			isHTMX := r.Header.Get("HX-Request") == "true"
@@ -61,7 +62,7 @@ func HotReload() func(http.Handler) http.Handler {
 
 func pingLoop(r *http.Request, notify func(string)) error {
 	for {
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 
 		if r.Context().Err() != nil {
 			return nil
