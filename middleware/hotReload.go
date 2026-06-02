@@ -17,16 +17,7 @@ func HotReload() func(http.Handler) http.Handler {
 				return
 			}
 
-			isHTMX := r.Header.Get("HX-Request") == "true"
-
-			if isHTMX {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			isStream := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
-
-			if isStream {
+			if !shouldAddHotReloadScript(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -58,6 +49,22 @@ func HotReload() func(http.Handler) http.Handler {
 	}
 
 	return f
+}
+
+func shouldAddHotReloadScript(r *http.Request) bool {
+	isStream := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
+
+	if isStream {
+		return false
+	}
+
+	isHTMX := r.Header.Get("HX-Request") == "true"
+
+	if isHTMX {
+		return false
+	}
+
+	return true
 }
 
 func pingLoop(r *http.Request, notify func(string)) error {
