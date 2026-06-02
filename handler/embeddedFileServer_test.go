@@ -1,4 +1,4 @@
-package httpmin
+package handler
 
 import (
 	"embed"
@@ -6,13 +6,17 @@ import (
 	"testing"
 )
 
-//go:embed all:testdata/public
+//go:embed all:testdata
 var publicFiles embed.FS
 
 func TestCleanURLHandling(t *testing.T) {
-	handler := serveEmbeddedFiles(publicFiles)
+	handler, err := EmbeddedFileServer(publicFiles)
 
-	r := httptest.NewRequest("GET", "/public/test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("GET", "/test", nil)
 	r.Header.Add("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 
@@ -32,9 +36,13 @@ func TestCleanURLHandling(t *testing.T) {
 }
 
 func TestLargeFilesCompressed(t *testing.T) {
-	handler := serveEmbeddedFiles(publicFiles)
+	handler, err := EmbeddedFileServer(publicFiles)
 
-	r := httptest.NewRequest("GET", "/public/data.txt", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("GET", "/data.txt", nil)
 	r.Header.Add("Accept-Encoding", "gzip")
 	w := httptest.NewRecorder()
 

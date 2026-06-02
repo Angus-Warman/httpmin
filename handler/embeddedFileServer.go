@@ -1,8 +1,9 @@
-package httpmin
+package handler
 
 import (
 	"bytes"
 	"compress/gzip"
+	"embed"
 	"io"
 	"io/fs"
 	"mime"
@@ -12,6 +13,33 @@ import (
 	"strings"
 	"time"
 )
+
+// Pre-computes gzip data for compressed responses
+//
+// Serves "clean" URLs, /page -> /page.html
+func EmbeddedFileServer(folder embed.FS) (http.Handler, error) {
+	// By default, embedded folder is expecting a path like "/public/index.html"
+	// Moving down one level results in normal behaviour
+	innerFolder := substituteTopLevelDir(folder)
+
+	fallback := http.FileServerFS(innerFolder)
+	fallback = setLastModified(fallback)
+
+	handler := &embeddedFileServer{
+		folder:       innerFolder,
+		fallback:     fallback,
+		pathLookup:   make(map[string]string),
+		gzippedFiles: make(map[string][]byte),
+	}
+
+	err := handler.build()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return handler, nil
+}
 
 var serverStartTime = time.Now().UTC().Round(time.Second)
 var serverStartTimeString = serverStartTime.Format(http.TimeFormat)
@@ -242,28 +270,4 @@ func substituteTopLevelDir(root fs.FS) fs.FS {
 	}
 
 	return newRoot
-}
-
-func serveEmbeddedFiles(folder fs.FS) http.Handler {
-	// By default, embedded folder is expecting a path like "/public/index.html"
-	// Moving down one level results in normal behaviour
-	folder = substituteTopLevelDir(folder)
-
-	fallback := http.FileServerFS(folder)
-	fallback = setLastModified(fallback)
-
-	handler := &embeddedFileServer{
-		folder:       folder,
-		fallback:     fallback,
-		pathLookup:   make(map[string]string),
-		gzippedFiles: make(map[string][]byte),
-	}
-
-	err := handler.build()
-
-	if err != nil {
-		panic(err)
-	}
-
-	return handler
 }

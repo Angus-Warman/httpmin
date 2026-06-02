@@ -2,12 +2,13 @@ package httpmin
 
 import (
 	"crypto/tls"
+	"embed"
 	"fmt"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/Angus-Warman/httpmin/handler"
 	"github.com/Angus-Warman/httpmin/middleware"
 )
 
@@ -65,16 +66,20 @@ func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 }
 
 // Serves files from embedded directory.
-//
-// Gzips valid files and serves compressed requests.
-//
-// Maps requests from "/page" to "/page.html".
+// Pre-computes gzip data for compressed responses.
+// Serves "clean" URLs, /page -> /page.html
 //
 //	//go:embed all:public
 //	var publicFiles embed.FS
 //	c.ServeEmbedded(publicFiles)
-func (c *Chassis) ServeEmbedded(folder fs.FS) *Chassis {
-	c.Mux.Handle("/", serveEmbeddedFiles(folder))
+func (c *Chassis) ServeEmbedded(folder embed.FS) *Chassis {
+	handler, err := handler.EmbeddedFileServer(folder)
+
+	if err != nil {
+		panic(err)
+	}
+
+	c.Mux.Handle("/", handler)
 	return c
 }
 
