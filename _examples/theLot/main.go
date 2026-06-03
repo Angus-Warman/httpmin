@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/Angus-Warman/httpmin"
+	"github.com/Angus-Warman/httpmin/handler"
 	"github.com/Angus-Warman/httpmin/middleware"
 )
 
@@ -28,6 +29,7 @@ func main() {
 
 	c.OnPort("8081") // Port used comes from: env variables, .env file, this function, "8080" (in that order)
 	c.Route("/hello", helloWorld)
+	c.RouteHandler("/stats", handler.Stats())
 	c.ServeFolder("public") // Not embedded, add any file to folder and load the page
 	c.Use(middleware.Cors())
 	c.Use(myCustomMiddleware())
