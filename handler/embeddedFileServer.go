@@ -247,30 +247,3 @@ func setLastModified(next http.Handler) http.Handler {
 
 	return http.HandlerFunc(fn)
 }
-
-// If root contains exactly one top-level dir and nothing else, substitute it
-func substituteTopLevelDir(root fs.FS) fs.FS {
-	entries, err := fs.ReadDir(root, ".")
-
-	if err != nil {
-		return root
-	}
-
-	if len(entries) != 1 {
-		return root
-	}
-
-	entry := entries[0]
-
-	if !entry.IsDir() {
-		return root
-	}
-
-	newRoot, err := fs.Sub(root, entry.Name())
-
-	if err != nil {
-		return root
-	}
-
-	return newRoot
-}

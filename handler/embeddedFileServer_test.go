@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-//go:embed all:testdata
+//go:embed all:testdata/public
 var publicFiles embed.FS
 
 func TestIndexServed(t *testing.T) {
