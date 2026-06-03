@@ -1,12 +1,22 @@
-// httpmin includes the bare minimum for a sensible HTTP service.
+// The bare minimum required to launch a sensible Go server.
 //
-// It has two goals, minimal boilerplate, and configuration with minimal fuss.
+// Three goals:
+//   - Minimal boilerplate
+//   - Sensible defaults
+//   - Easy configuration
 //
-//   - Environment variables
+// Features:
+//   - Environment variable handling
+//   - Efficient embedded asset serving
+//   - Graceful shutdown
 //   - Request logging
-//   - Panic handling
-//   - Optional HTTPS
-//   - Optional middleware.
+//   - Recovers from panics
+//
+// Optional:
+//   - HTTPS (including self-signed)
+//   - CORS
+//   - JWT authentication
+//   - SSE streaming
 //
 // # Hello World
 //

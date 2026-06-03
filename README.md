@@ -1,8 +1,24 @@
 ## httpmin
 
-The bare minimum required to launch a sensible Go server:
+The bare minimum required to launch a sensible Go server.
 
-Environment variables, request logging, recovers from panics, HTTPS, configuration with minimal fuss.
+Three goals:
+- Minimal boilerplate
+- Sensible defaults
+- Easy configuration
+
+Features:
+- Environment variable handling
+- Efficient embedded asset serving
+- Graceful shutdown
+- Request logging
+- Recovers from panics
+
+Optional:
+- HTTPS (including self-signed)
+- CORS
+- JWT authentication
+- SSE streaming
 
 ### Install
 
@@ -48,10 +64,3 @@ func main() {
 	httpmin.Setup().ServeEmbedded(publicFiles).Run()
 }
 ```
-
-### Features
-
-- CORS
-- JWT based authentication
-- Self-signed HTTPS
-- [Server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) response handler
