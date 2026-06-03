@@ -111,6 +111,17 @@ func (c *Chassis) OnIP(ip string) *Chassis {
 	return c
 }
 
+// Only sets if environment variable not already set
+func (c *Chassis) DefaultEnvVar(key, value string) *Chassis {
+	_, exists := os.LookupEnv(key)
+
+	if !exists {
+		os.Setenv(key, value)
+	}
+
+	return c
+}
+
 // Set as nil to disable logging
 func (c *Chassis) WithLogger(logger *log.Logger) *Chassis {
 	c.logger = logger
