@@ -73,23 +73,23 @@ func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 //	var publicFiles embed.FS
 //	c.ServeEmbedded(publicFiles)
 func (c *Chassis) ServeEmbedded(folder embed.FS) *Chassis {
-	handler, err := handler.EmbeddedFileServer(folder)
+	h, err := handler.EmbeddedFileServer(folder)
 
 	if err != nil {
 		panic(err)
 	}
 
-	c.Mux.Handle("/", handler)
+	c.Mux.Handle("/", h)
 	return c
 }
 
-// Serves files from directory
+// Serves files from directory.
 //
-// Identical to:
-//
-//	c.mux.Handle("/", http.FileServer(http.Dir(path)))
-func (c *Chassis) ServeFolder(path string) *Chassis {
-	c.Mux.Handle("/", http.FileServer(http.Dir(path)))
+// Serves "clean" URLs, /page -> /page.html.
+func (c *Chassis) ServeFolder(rootPath string) *Chassis {
+	h := handler.DiskFileServer(rootPath)
+
+	c.Mux.Handle("/", h)
 	return c
 }
 
