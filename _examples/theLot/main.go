@@ -51,6 +51,7 @@ func main() {
 	c.Use(middleware.Cors())
 	c.Use(myCustomMiddleware())
 	c.PublicIP() // Listen on "0.0.0.0"
+	c.RouteHandler("/favicon.ico", handler.Favicon(0x00FF00))
 
 	c.Run()
 }
