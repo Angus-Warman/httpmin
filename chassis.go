@@ -79,7 +79,8 @@ func (c *Chassis) ServeEmbedded(folder embed.FS) *Chassis {
 		panic(err)
 	}
 
-	c.Mux.Handle("/", h)
+	c.Mux.Handle("/*", h)
+
 	return c
 }
 
@@ -89,7 +90,8 @@ func (c *Chassis) ServeEmbedded(folder embed.FS) *Chassis {
 func (c *Chassis) ServeFolder(rootPath string) *Chassis {
 	h := handler.DiskFileServer(rootPath)
 
-	c.Mux.Handle("/", h)
+	c.Mux.Handle("/*", h)
+
 	return c
 }
 
