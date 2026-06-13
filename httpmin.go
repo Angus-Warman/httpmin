@@ -33,7 +33,7 @@
 //	}
 //
 //	func main() {
-//		httpmin.Setup().Route("/", helloWorld).Run()
+//		httpmin.New().Route("/", helloWorld).Run()
 //	}
 //
 // # Serve static files
@@ -51,7 +51,7 @@
 //	var publicFiles embed.FS
 //
 //	func main() {
-//		httpmin.Setup().ServeEmbedded(publicFiles).Run()
+//		httpmin.New().ServeEmbedded(publicFiles).Run()
 //	}
 //
 // See [Chassis] for more details.

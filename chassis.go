@@ -26,7 +26,7 @@ type Chassis struct {
 }
 
 // Plain option, will serve http://localhost:8080 unless env variables specify
-func New() *Chassis {
+func Blank() *Chassis {
 	chassis := &Chassis{
 		protocol:             "http",
 		ip:                   "localhost",
@@ -40,8 +40,8 @@ func New() *Chassis {
 }
 
 // Default option, reads .env file, logs incoming requests, handles panics, will serve http://localhost:8080 unless env variables specify
-func Setup() *Chassis {
-	c := New()
+func New() *Chassis {
+	c := Blank()
 	c.EnvFile(".env")
 	c.useDefaultMiddleware = true
 	return c

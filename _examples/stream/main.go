@@ -28,5 +28,5 @@ func timeStream(r *http.Request, notify func(string)) error {
 }
 
 func main() {
-	httpmin.Setup().RouteHandler("/time", response.Stream(timeStream)).Run()
+	httpmin.New().RouteHandler("/time", response.Stream(timeStream)).Run()
 }
