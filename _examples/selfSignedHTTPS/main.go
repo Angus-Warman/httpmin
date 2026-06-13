@@ -11,5 +11,5 @@ func helloWorld(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	httpmin.Setup().Route("/", helloWorld).UseSelfSignedHTTPSFromFolder("tls").Run()
+	httpmin.New().Route("/", helloWorld).UseSelfSignedHTTPSFromFolder("tls").Run()
 }

@@ -42,7 +42,7 @@ func helloWorld(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	httpmin.Setup().Route("/", helloWorld).Run()
+	httpmin.New().Route("/", helloWorld).Run()
 }
 ```
 
@@ -61,6 +61,6 @@ import (
 var publicFiles embed.FS
 
 func main() {
-	httpmin.Setup().ServeEmbedded(publicFiles).Run()
+	httpmin.New().ServeEmbedded(publicFiles).Run()
 }
 ```

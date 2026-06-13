@@ -41,7 +41,7 @@ func myCustomMiddleware() func(http.Handler) http.Handler {
 var templatesFS embed.FS
 
 func main() {
-	c := httpmin.Setup() // Modifications can be chained
+	c := httpmin.New() // Modifications can be chained
 
 	c.OnPort("8081") // Port used comes from: env variables, .env file, this function, "8080" (in that order)
 	c.Route("/ping", ping)

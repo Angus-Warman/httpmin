@@ -13,5 +13,5 @@ func whoops(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	httpmin.Setup().Route("/whoops", whoops).Run()
+	httpmin.New().Route("/whoops", whoops).Run()
 }

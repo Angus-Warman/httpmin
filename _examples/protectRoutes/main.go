@@ -54,7 +54,7 @@ var publicFiles embed.FS
 func main() {
 	os.Setenv("JWT_SECRET", fmt.Sprint(rand.Int64()))
 
-	c := httpmin.Setup()
+	c := httpmin.New()
 
 	c.Route("POST /login", loginHandler)
 	c.ServeEmbedded(publicFiles)

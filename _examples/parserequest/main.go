@@ -71,5 +71,5 @@ func submit(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	httpmin.Setup().Route("GET /", indexPage).Route("POST /submit", submit).Run()
+	httpmin.New().Route("GET /", indexPage).Route("POST /submit", submit).Run()
 }
