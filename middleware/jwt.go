@@ -55,20 +55,17 @@ func newHandler(pub ed25519.PublicKey, priv ed25519.PrivateKey) (*keyHandler, er
 }
 
 func createHandler(secret string) *keyHandler {
-	seed := sha256.Sum256([]byte(secret)) // always exactly 32 bytes
+	seed := sha256.Sum256([]byte(secret))
 	priv := ed25519.NewKeyFromSeed(seed[:])
 	pub := priv.Public().(ed25519.PublicKey)
-	handler := &keyHandler{
+
+	return &keyHandler{
 		publicKey:  pub,
 		privateKey: priv,
 	}
-
-	return handler
 }
 
-// createToken issues a new signed token for the given subject, valid for
-// the given duration starting now.
-func (h *keyHandler) createToken(sub string, duration time.Duration) (string, error) {
+func (h *keyHandler) createToken(sub string, validFor time.Duration) (string, error) {
 	if h.privateKey == nil {
 		return "", errors.New("jwt: handler has no private key, cannot sign")
 	}
@@ -82,7 +79,7 @@ func (h *keyHandler) createToken(sub string, duration time.Duration) (string, er
 	c := claims{
 		Sub: sub,
 		Iat: now.Unix(),
-		Exp: now.Add(duration).Unix(),
+		Exp: now.Add(validFor).Unix(),
 	}
 
 	headerJSON, err := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
@@ -103,69 +100,81 @@ func (h *keyHandler) createToken(sub string, duration time.Duration) (string, er
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
-func (h *keyHandler) validateToken(token string) (sub string, ok bool) {
+func (h *keyHandler) getSubject(token string) (string, error) {
+	c, err := h.validateToken(token)
+
+	if err != nil {
+		return "", err
+	}
+
+	return c.Sub, err
+}
+
+func (h *keyHandler) validateToken(token string) (claims, error) {
+	var zero claims
+
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return "", false
+		return zero, errors.New("jwt: malformed token")
 	}
 	headerB64, claimsB64, sigB64 := parts[0], parts[1], parts[2]
 
 	headerJSON, err := base64.RawURLEncoding.DecodeString(headerB64)
 
 	if err != nil {
-		return "", false
+		return zero, fmt.Errorf("jwt: decode header: %w", err)
 	}
 
 	hdr, err := jsonTo[header](headerJSON)
 
 	if err != nil {
-		return "", false
+		return zero, fmt.Errorf("jwt: decode header: %w", err)
 	}
 
 	// Hard-coded check
 	if hdr.Alg != algorithm {
-		return "", false
+		return zero, errors.New("jwt: unexpected algorithm")
 	}
 
 	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
 
 	if err != nil {
-		return "", false
+		return zero, fmt.Errorf("jwt: decode signature: %w", err)
 	}
 
 	signingInput := headerB64 + "." + claimsB64
 
 	if !ed25519.Verify(h.publicKey, []byte(signingInput), sig) {
-		return "", false
+		return zero, errors.New("jwt: invalid signature")
 	}
 
 	claimsJSON, err := base64.RawURLEncoding.DecodeString(claimsB64)
 
 	if err != nil {
-		return "", false
+		return zero, fmt.Errorf("jwt: decode claims: %w", err)
 	}
 
 	c, err := jsonTo[claims](claimsJSON)
 
 	if err != nil {
-		return "", false
+		return zero, fmt.Errorf("jwt: decode claims: %w", err)
 	}
 
 	now := time.Now().Unix()
 
 	if c.Exp != 0 && now >= c.Exp {
-		return "", false
+		return zero, errors.New("jwt: token expired")
 	}
 
 	if c.Iat != 0 && now < c.Iat {
-		return "", false
+		return zero, errors.New("jwt: token not yet valid")
 	}
 
 	if c.Sub == "" {
-		return "", false
+		return zero, errors.New("jwt: sub must not be empty")
 	}
 
-	return c.Sub, true
+	return c, nil
 }
 
 func encodeSegment(b []byte) string {

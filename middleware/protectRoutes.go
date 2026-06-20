@@ -142,9 +142,9 @@ func ProtectRoutes(config ProtectRoutesConfig) func(http.Handler) http.Handler {
 func validateJWT(tokenString, secret string) (string, error) {
 	h := createHandler(secret)
 
-	sub, ok := h.validateToken(tokenString)
+	sub, err := h.getSubject(tokenString)
 
-	if !ok {
+	if err != nil {
 		return "", fmt.Errorf("invalid token")
 	}
 

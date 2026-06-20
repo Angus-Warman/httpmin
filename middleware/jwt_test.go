@@ -31,10 +31,12 @@ func TestCreateAndValidate_RoundTrip(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	sub, ok := h.validateToken(token)
-	if !ok {
-		t.Fatalf("Validate: expected ok=true, got false")
+	sub, err := h.getSubject(token)
+
+	if err != nil {
+		t.Fatalf("Validate: expected ok=true, got %v", err)
 	}
+
 	if sub != "user-123" {
 		t.Errorf("Validate: got sub %q, want %q", sub, "user-123")
 	}
@@ -54,9 +56,9 @@ func TestValidate_WithSeparatePublicKeyOnlyHandler(t *testing.T) {
 		t.Fatalf("NewHandler: %v", err)
 	}
 
-	sub, ok := verifier.validateToken(token)
-	if !ok || sub != "user-123" {
-		t.Errorf("Validate on verify-only handler: got (%q, %v), want (%q, true)", sub, ok, "user-123")
+	sub, err := verifier.getSubject(token)
+	if err != nil || sub != "user-123" {
+		t.Errorf("Validate on verify-only handler: got (%q, %v), want (%q, true)", sub, err, "user-123")
 	}
 }
 
@@ -106,7 +108,7 @@ func TestValidate_RejectsTamperedPayload(t *testing.T) {
 	})
 	tampered := parts[0] + "." + b64(forgedClaims) + "." + parts[2]
 
-	if sub, ok := h.validateToken(tampered); ok {
+	if sub, err := h.getSubject(tampered); err == nil {
 		t.Errorf("Validate accepted tampered payload, returned sub=%q", sub)
 	}
 }
@@ -119,7 +121,7 @@ func TestValidate_RejectsTamperedHeader(t *testing.T) {
 	forgedHeader, _ := json.Marshal(header{Alg: algorithm, Typ: "weird"})
 	tampered := b64(forgedHeader) + "." + parts[1] + "." + parts[2]
 
-	if sub, ok := h.validateToken(tampered); ok {
+	if sub, err := h.getSubject(tampered); err == nil {
 		t.Errorf("Validate accepted tampered header, returned sub=%q", sub)
 	}
 }
@@ -136,7 +138,7 @@ func TestValidate_RejectsBitFlippedSignature(t *testing.T) {
 	sig[0] ^= 0xFF // flip bits in the first byte
 	tampered := parts[0] + "." + parts[1] + "." + b64(sig)
 
-	if sub, ok := h.validateToken(tampered); ok {
+	if sub, err := h.getSubject(tampered); err == nil {
 		t.Errorf("Validate accepted flipped-bit signature, returned sub=%q", sub)
 	}
 }
@@ -150,7 +152,7 @@ func TestValidate_RejectsTruncatedSignature(t *testing.T) {
 	truncated := b64(sig[:len(sig)-1])
 	tampered := parts[0] + "." + parts[1] + "." + truncated
 
-	if sub, ok := h.validateToken(tampered); ok {
+	if sub, err := h.getSubject(tampered); err == nil {
 		t.Errorf("Validate accepted truncated signature, returned sub=%q", sub)
 	}
 }
@@ -162,7 +164,7 @@ func TestValidate_RejectsEmptySignature(t *testing.T) {
 
 	tampered := parts[0] + "." + parts[1] + "."
 
-	if sub, ok := h.validateToken(tampered); ok {
+	if sub, err := h.getSubject(tampered); err == nil {
 		t.Errorf("Validate accepted empty signature, returned sub=%q", sub)
 	}
 }
@@ -182,7 +184,7 @@ func TestValidate_RejectsAlgNone(t *testing.T) {
 	})
 	token := b64(forgedHeader) + "." + b64(forgedClaims) + "."
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted alg=none token, returned sub=%q", sub)
 	}
 }
@@ -201,7 +203,7 @@ func TestValidate_RejectsDifferentAlgWithValidLookingStructure(t *testing.T) {
 	})
 	token := buildRawToken(t, h.privateKey, forgedHeader, claimsJSON)
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted non-EdDSA alg header, returned sub=%q", sub)
 	}
 }
@@ -217,7 +219,7 @@ func TestValidate_RejectsMissingAlgField(t *testing.T) {
 	})
 	token := buildRawToken(t, h.privateKey, forgedHeader, claimsJSON)
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted token with missing alg, returned sub=%q", sub)
 	}
 }
@@ -235,7 +237,7 @@ func TestValidate_RejectsTokenSignedByDifferentKeyPair(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if sub, ok := legit.validateToken(forgedToken); ok {
+	if sub, err := legit.getSubject(forgedToken); err == nil {
 		t.Errorf("Validate accepted token signed by a different key pair, returned sub=%q", sub)
 	}
 }
@@ -244,7 +246,7 @@ func TestValidate_RejectsExpiredToken(t *testing.T) {
 	h := createHandler("12345")
 	token, _ := h.createToken("user-123", -time.Minute) // already expired
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted expired token, returned sub=%q", sub)
 	}
 }
@@ -259,7 +261,7 @@ func TestValidate_RejectsTokenExactlyAtExpiry(t *testing.T) {
 	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
 	token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted token at exact expiry boundary, returned sub=%q", sub)
 	}
 }
@@ -268,9 +270,9 @@ func TestValidate_AcceptsTokenJustBeforeExpiry(t *testing.T) {
 	h := createHandler("12345")
 	token, _ := h.createToken("user-123", 2*time.Second)
 
-	sub, ok := h.validateToken(token)
-	if !ok || sub != "user-123" {
-		t.Errorf("Validate rejected still-valid token: sub=%q ok=%v", sub, ok)
+	sub, err := h.getSubject(token)
+	if err != nil || sub != "user-123" {
+		t.Errorf("Validate rejected still-valid token: sub=%q err=%v", sub, err)
 	}
 }
 
@@ -282,7 +284,7 @@ func TestValidate_RejectsFutureIat(t *testing.T) {
 	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
 	token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted token with iat in the future, returned sub=%q", sub)
 	}
 }
@@ -298,7 +300,7 @@ func TestValidate_RejectsEmptySubjectInClaims(t *testing.T) {
 	// verification.
 	token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
 
-	if sub, ok := h.validateToken(token); ok {
+	if sub, err := h.getSubject(token); err == nil {
 		t.Errorf("Validate accepted token with empty sub claim, returned sub=%q", sub)
 	}
 }
@@ -326,7 +328,7 @@ func TestValidate_RejectsMalformedTokens(t *testing.T) {
 
 	for name, token := range cases {
 		t.Run(name, func(t *testing.T) {
-			if sub, ok := h.validateToken(token); ok {
+			if sub, err := h.getSubject(token); err == nil {
 				t.Errorf("Validate(%q) = (%q, true), want ok=false", token, sub)
 			}
 		})
@@ -359,7 +361,7 @@ func TestValidate_DoesNotPanicOnAdversarialInput(t *testing.T) {
 					t.Errorf("Validate(%.20q...) panicked: %v", in, r)
 				}
 			}()
-			h.validateToken(in)
+			h.getSubject(in)
 		}()
 	}
 }
