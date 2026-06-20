@@ -24,7 +24,7 @@ type claims struct {
 	Exp int64  `json:"exp"`
 }
 
-type keyHandler struct {
+type jwtHandler struct {
 	publicKey  ed25519.PublicKey
 	privateKey ed25519.PrivateKey
 }
@@ -42,7 +42,7 @@ func jsonTo[T any](data []byte) (T, error) {
 	return into, nil
 }
 
-func newHandler(pub ed25519.PublicKey, priv ed25519.PrivateKey) (*keyHandler, error) {
+func newHandler(pub ed25519.PublicKey, priv ed25519.PrivateKey) (*jwtHandler, error) {
 	if len(pub) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("jwt: public key must be %d bytes", ed25519.PublicKeySize)
 	}
@@ -51,21 +51,21 @@ func newHandler(pub ed25519.PublicKey, priv ed25519.PrivateKey) (*keyHandler, er
 		return nil, fmt.Errorf("jwt: private key must be %d bytes", ed25519.PrivateKeySize)
 	}
 
-	return &keyHandler{publicKey: pub, privateKey: priv}, nil
+	return &jwtHandler{publicKey: pub, privateKey: priv}, nil
 }
 
-func createHandler(secret string) *keyHandler {
+func createJwtHandler(secret string) *jwtHandler {
 	seed := sha256.Sum256([]byte(secret))
 	priv := ed25519.NewKeyFromSeed(seed[:])
 	pub := priv.Public().(ed25519.PublicKey)
 
-	return &keyHandler{
+	return &jwtHandler{
 		publicKey:  pub,
 		privateKey: priv,
 	}
 }
 
-func (h *keyHandler) createToken(sub string, validFor time.Duration) (string, error) {
+func (h *jwtHandler) createToken(sub string, validFor time.Duration) (string, error) {
 	if h.privateKey == nil {
 		return "", errors.New("jwt: handler has no private key, cannot sign")
 	}
@@ -100,7 +100,7 @@ func (h *keyHandler) createToken(sub string, validFor time.Duration) (string, er
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
-func (h *keyHandler) getSubject(token string) (string, error) {
+func (h *jwtHandler) getSubject(token string) (string, error) {
 	c, err := h.validateToken(token)
 
 	if err != nil {
@@ -110,7 +110,7 @@ func (h *keyHandler) getSubject(token string) (string, error) {
 	return c.Sub, err
 }
 
-func (h *keyHandler) validateToken(token string) (claims, error) {
+func (h *jwtHandler) validateToken(token string) (claims, error) {
 	var zero claims
 
 	parts := strings.Split(token, ".")

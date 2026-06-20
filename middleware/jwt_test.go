@@ -24,7 +24,7 @@ func buildRawToken(t *testing.T, priv ed25519.PrivateKey, headerJSON, claimsJSON
 }
 
 func TestCreateAndValidate_RoundTrip(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	token, err := h.createToken("user-123", time.Hour)
 	if err != nil {
@@ -43,7 +43,7 @@ func TestCreateAndValidate_RoundTrip(t *testing.T) {
 }
 
 func TestValidate_WithSeparatePublicKeyOnlyHandler(t *testing.T) {
-	signer := createHandler("12345")
+	signer := createJwtHandler("12345")
 	token, err := signer.createToken("user-123", time.Hour)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -63,7 +63,7 @@ func TestValidate_WithSeparatePublicKeyOnlyHandler(t *testing.T) {
 }
 
 func TestCreate_VerifyOnlyHandlerCannotSign(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	verifyOnly, err := newHandler(h.publicKey, nil)
 
@@ -79,7 +79,7 @@ func TestCreate_VerifyOnlyHandlerCannotSign(t *testing.T) {
 }
 
 func TestCreate_RejectsEmptySubject(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	_, err := h.createToken("", time.Hour)
 
@@ -91,7 +91,7 @@ func TestCreate_RejectsEmptySubject(t *testing.T) {
 // --- tampering / forgery -----------------------------------------------
 
 func TestValidate_RejectsTamperedPayload(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", time.Hour)
 
 	parts := strings.Split(token, ".")
@@ -114,7 +114,7 @@ func TestValidate_RejectsTamperedPayload(t *testing.T) {
 }
 
 func TestValidate_RejectsTamperedHeader(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", time.Hour)
 	parts := strings.Split(token, ".")
 
@@ -127,7 +127,7 @@ func TestValidate_RejectsTamperedHeader(t *testing.T) {
 }
 
 func TestValidate_RejectsBitFlippedSignature(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", time.Hour)
 	parts := strings.Split(token, ".")
 
@@ -144,7 +144,7 @@ func TestValidate_RejectsBitFlippedSignature(t *testing.T) {
 }
 
 func TestValidate_RejectsTruncatedSignature(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", time.Hour)
 	parts := strings.Split(token, ".")
 
@@ -158,7 +158,7 @@ func TestValidate_RejectsTruncatedSignature(t *testing.T) {
 }
 
 func TestValidate_RejectsEmptySignature(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", time.Hour)
 	parts := strings.Split(token, ".")
 
@@ -172,7 +172,7 @@ func TestValidate_RejectsEmptySignature(t *testing.T) {
 // --- algorithm confusion -------------------------------------------------
 
 func TestValidate_RejectsAlgNone(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	// Classic "alg: none" forgery attempt: claim no signature is
 	// needed at all.
@@ -190,7 +190,7 @@ func TestValidate_RejectsAlgNone(t *testing.T) {
 }
 
 func TestValidate_RejectsDifferentAlgWithValidLookingStructure(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	// Header claims HS256 even though we generated this with the
 	// Ed25519 helper -- the alg field is attacker controlled and
@@ -209,7 +209,7 @@ func TestValidate_RejectsDifferentAlgWithValidLookingStructure(t *testing.T) {
 }
 
 func TestValidate_RejectsMissingAlgField(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	forgedHeader, _ := json.Marshal(map[string]string{"typ": "JWT"}) // no "alg" at all
 	claimsJSON, _ := json.Marshal(claims{
@@ -227,8 +227,8 @@ func TestValidate_RejectsMissingAlgField(t *testing.T) {
 // --- key confusion ------------------------------------------------------
 
 func TestValidate_RejectsTokenSignedByDifferentKeyPair(t *testing.T) {
-	legit := createHandler("12345")
-	attacker := createHandler("54321") // different key pair entirely
+	legit := createJwtHandler("12345")
+	attacker := createJwtHandler("54321") // different key pair entirely
 
 	// Attacker signs a token with their own key, but we only trust
 	// legit's public key for verification.
@@ -243,7 +243,7 @@ func TestValidate_RejectsTokenSignedByDifferentKeyPair(t *testing.T) {
 }
 
 func TestValidate_RejectsExpiredToken(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", -time.Minute) // already expired
 
 	if sub, err := h.getSubject(token); err == nil {
@@ -252,7 +252,7 @@ func TestValidate_RejectsExpiredToken(t *testing.T) {
 }
 
 func TestValidate_RejectsTokenExactlyAtExpiry(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	// Build a token whose exp equals "now" -- treat the boundary as
 	// expired (now >= exp), not valid.
@@ -267,7 +267,7 @@ func TestValidate_RejectsTokenExactlyAtExpiry(t *testing.T) {
 }
 
 func TestValidate_AcceptsTokenJustBeforeExpiry(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 	token, _ := h.createToken("user-123", 2*time.Second)
 
 	sub, err := h.getSubject(token)
@@ -277,7 +277,7 @@ func TestValidate_AcceptsTokenJustBeforeExpiry(t *testing.T) {
 }
 
 func TestValidate_RejectsFutureIat(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	future := time.Now().Add(time.Hour).Unix()
 	claimsJSON, _ := json.Marshal(claims{Sub: "user-123", Iat: future, Exp: future + 3600})
@@ -290,7 +290,7 @@ func TestValidate_RejectsFutureIat(t *testing.T) {
 }
 
 func TestValidate_RejectsEmptySubjectInClaims(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	now := time.Now().Unix()
 	claimsJSON, _ := json.Marshal(claims{Sub: "", Iat: now, Exp: now + 3600})
@@ -308,7 +308,7 @@ func TestValidate_RejectsEmptySubjectInClaims(t *testing.T) {
 // --- malformed input / parser robustness ---------------------------------
 
 func TestValidate_RejectsMalformedTokens(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	validHeaderJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
 	validHeaderB64 := b64(validHeaderJSON)
@@ -336,7 +336,7 @@ func TestValidate_RejectsMalformedTokens(t *testing.T) {
 }
 
 func TestValidate_DoesNotPanicOnAdversarialInput(t *testing.T) {
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	// A grab-bag of inputs designed to probe for panics (index out of
 	// range, nil deref, etc.) rather than just wrong results. A panic
@@ -369,7 +369,7 @@ func TestValidate_DoesNotPanicOnAdversarialInput(t *testing.T) {
 func TestCreate_TokensForSameSubjectAreNotIdentical(t *testing.T) {
 	// Not a strict security requirement, but a sanity check that
 	// iat/exp are actually being set per-call rather than cached.
-	h := createHandler("12345")
+	h := createJwtHandler("12345")
 
 	t1, _ := h.createToken("user-123", time.Hour)
 	time.Sleep(1100 * time.Millisecond) // ensure iat (second resolution) differs

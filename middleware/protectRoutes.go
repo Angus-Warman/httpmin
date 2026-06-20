@@ -139,10 +139,11 @@ func ProtectRoutes(config ProtectRoutesConfig) func(http.Handler) http.Handler {
 	return f
 }
 
+// Returns the token subject
 func validateJWT(tokenString, secret string) (string, error) {
-	h := createHandler(secret)
+	jwtHandler := createJwtHandler(secret)
 
-	sub, err := h.getSubject(tokenString)
+	sub, err := jwtHandler.getSubject(tokenString)
 
 	if err != nil {
 		return "", fmt.Errorf("invalid token")
@@ -161,9 +162,9 @@ func Authorize(subject string, w http.ResponseWriter) error {
 		return err
 	}
 
-	handler := createHandler(secret)
+	jwtHandler := createJwtHandler(secret)
 
-	tokenString, err := handler.createToken(subject, ProtectRoutesSettings.TokenExpiry)
+	tokenString, err := jwtHandler.createToken(subject, ProtectRoutesSettings.TokenExpiry)
 
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
