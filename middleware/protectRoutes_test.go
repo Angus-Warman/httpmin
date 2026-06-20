@@ -50,7 +50,7 @@ func TestProtectRoutes_Allow(t *testing.T) {
 	r := httptest.NewRequest("GET", "/protect", nil)
 	w := httptest.NewRecorder()
 
-	err := Authorize("", w)
+	err := Authorize("test-subject", w)
 
 	if err != nil {
 		t.Fatal(err)

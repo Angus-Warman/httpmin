@@ -6,8 +6,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // Public to allow finer configuration
@@ -142,21 +140,15 @@ func ProtectRoutes(config ProtectRoutesConfig) func(http.Handler) http.Handler {
 }
 
 func validateJWT(tokenString, secret string) (string, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
-		return []byte(secret), nil
-	})
+	h := createHandler(secret)
 
-	if err != nil {
-		return "", err
-	}
+	sub, ok := h.validateToken(tokenString)
 
-	if !token.Valid {
+	if !ok {
 		return "", fmt.Errorf("invalid token")
 	}
 
-	subject, err := token.Claims.GetSubject()
-
-	return subject, err
+	return sub, nil
 }
 
 // Grants an auth cookie
@@ -169,13 +161,9 @@ func Authorize(subject string, w http.ResponseWriter) error {
 		return err
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": subject,
-		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(ProtectRoutesSettings.TokenExpiry).Unix(),
-	})
+	handler := createHandler(secret)
 
-	tokenString, err := token.SignedString([]byte(secret))
+	tokenString, err := handler.createToken(subject, ProtectRoutesSettings.TokenExpiry)
 
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
