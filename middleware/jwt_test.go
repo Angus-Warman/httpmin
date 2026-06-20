@@ -1,0 +1,535 @@
+package middleware
+
+import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math"
+	"strings"
+	"testing"
+	"time"
+)
+
+func b64(b []byte) string {
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func buildRawToken(t *testing.T, priv ed25519.PrivateKey, headerJSON, claimsJSON []byte) string {
+	t.Helper()
+	signingInput := b64(headerJSON) + "." + b64(claimsJSON)
+	var sig []byte
+	if priv != nil {
+		sig = ed25519.Sign(priv, []byte(signingInput))
+	}
+	return signingInput + "." + b64(sig)
+}
+
+func TestCreateAndValidate_RoundTrip(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	token, err := h.createToken("user-123", time.Hour)
+
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	sub, err := h.getSubject(token)
+
+	if err != nil {
+		t.Fatalf("Validate: expected ok=true, got %v", err)
+	}
+
+	if sub != "user-123" {
+		t.Errorf("Validate: got sub %q, want %q", sub, "user-123")
+	}
+}
+
+func TestValidate_WithSeparatePublicKeyOnlyHandler(t *testing.T) {
+	signer := createJwtHandler("12345")
+	token, err := signer.createToken("user-123", time.Hour)
+
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// A verify-only handler (no private key), as would be used on a
+	// downstream service that only has the public key.
+	verifier, err := newHandler(signer.publicKey, nil)
+
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+
+	sub, err := verifier.getSubject(token)
+
+	if err != nil || sub != "user-123" {
+		t.Errorf("Validate on verify-only handler: got (%q, %v), want (%q, true)", sub, err, "user-123")
+	}
+}
+
+func TestCreate_VerifyOnlyHandlerCannotSign(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	verifyOnly, err := newHandler(h.publicKey, nil)
+
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+
+	_, err = verifyOnly.createToken("user-123", time.Hour)
+
+	if err == nil {
+		t.Error("Create on verify-only handler: expected error, got nil")
+	}
+}
+
+func TestCreate_RejectsEmptySubject(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	_, err := h.createToken("", time.Hour)
+
+	if err == nil {
+		t.Error("Create with empty sub: expected error, got nil")
+	}
+}
+
+func TestValidate_RejectsTamperedPayload(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", time.Hour)
+
+	parts := strings.Split(token, ".")
+
+	if len(parts) != 3 {
+		t.Fatalf("unexpected token shape: %d parts", len(parts))
+	}
+
+	forgedClaims, _ := json.Marshal(claims{
+		Sub: "admin",
+		Iat: time.Now().Unix(),
+		Exp: time.Now().Add(time.Hour).Unix(),
+	})
+
+	tampered := parts[0] + "." + b64(forgedClaims) + "." + parts[2]
+
+	sub, err := h.getSubject(tampered)
+
+	if err == nil {
+		t.Errorf("Validate accepted tampered payload, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsTamperedHeader(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", time.Hour)
+	parts := strings.Split(token, ".")
+
+	forgedHeader, _ := json.Marshal(header{Alg: algorithm, Typ: "weird"})
+	tampered := b64(forgedHeader) + "." + parts[1] + "." + parts[2]
+
+	sub, err := h.getSubject(tampered)
+
+	if err == nil {
+		t.Errorf("Validate accepted tampered header, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsBitFlippedSignature(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", time.Hour)
+	parts := strings.Split(token, ".")
+
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+
+	if err != nil {
+		t.Fatalf("decode sig: %v", err)
+	}
+
+	sig[0] ^= 0xFF // flip bits in the first byte
+	tampered := parts[0] + "." + parts[1] + "." + b64(sig)
+
+	sub, err := h.getSubject(tampered)
+
+	if err == nil {
+		t.Errorf("Validate accepted flipped-bit signature, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsTruncatedSignature(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", time.Hour)
+	parts := strings.Split(token, ".")
+
+	sig, _ := base64.RawURLEncoding.DecodeString(parts[2])
+	truncated := b64(sig[:len(sig)-1])
+	tampered := parts[0] + "." + parts[1] + "." + truncated
+
+	sub, err := h.getSubject(tampered)
+
+	if err == nil {
+		t.Errorf("Validate accepted truncated signature, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsEmptySignature(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", time.Hour)
+	parts := strings.Split(token, ".")
+
+	tampered := parts[0] + "." + parts[1] + "."
+
+	sub, err := h.getSubject(tampered)
+
+	if err == nil {
+		t.Errorf("Validate accepted empty signature, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsAlgNone(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	// Classic "alg: none" forgery attempt: claim no signature is
+	// needed at all.
+	forgedHeader, _ := json.Marshal(map[string]string{"alg": "none", "typ": "JWT"})
+	forgedClaims, _ := json.Marshal(claims{
+		Sub: "admin",
+		Iat: time.Now().Unix(),
+		Exp: time.Now().Add(time.Hour).Unix(),
+	})
+	token := b64(forgedHeader) + "." + b64(forgedClaims) + "."
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted alg=none token, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsDifferentAlgWithValidLookingStructure(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	forgedHeader, _ := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
+
+	claimsJSON, _ := json.Marshal(claims{
+		Sub: "user-123",
+		Iat: time.Now().Unix(),
+		Exp: time.Now().Add(time.Hour).Unix(),
+	})
+
+	token := buildRawToken(t, h.privateKey, forgedHeader, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted non-EdDSA alg header, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsMissingAlgField(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	forgedHeader, _ := json.Marshal(map[string]string{"typ": "JWT"}) // no "alg" at all
+	claimsJSON, _ := json.Marshal(claims{
+		Sub: "user-123",
+		Iat: time.Now().Unix(),
+		Exp: time.Now().Add(time.Hour).Unix(),
+	})
+	token := buildRawToken(t, h.privateKey, forgedHeader, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted token with missing alg, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsWrongTyp(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	forgedHeader, _ := json.Marshal(map[string]string{"alg": algorithm, "typ": "JOSE"})
+	claimsJSON, _ := json.Marshal(claims{
+		Sub: "user-123",
+		Iat: time.Now().Unix(),
+		Exp: time.Now().Add(time.Hour).Unix(),
+	})
+	token := buildRawToken(t, h.privateKey, forgedHeader, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted token with non-JWT typ, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsMissingTyp(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	forgedHeader, _ := json.Marshal(map[string]string{"alg": algorithm}) // no "typ" at all
+	claimsJSON, _ := json.Marshal(claims{
+		Sub: "user-123",
+		Iat: time.Now().Unix(),
+		Exp: time.Now().Add(time.Hour).Unix(),
+	})
+	token := buildRawToken(t, h.privateKey, forgedHeader, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted token with missing typ, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsTokenSignedByDifferentKeyPair(t *testing.T) {
+	legit := createJwtHandler("12345")
+	attacker := createJwtHandler("54321") // different key pair
+
+	forgedToken, err := attacker.createToken("admin", time.Hour)
+
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	sub, err := legit.getSubject(forgedToken)
+
+	if err == nil {
+		t.Errorf("Validate accepted token signed by a different key pair, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsExpiredToken(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", -time.Minute) // already expired
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted expired token, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsTokenExactlyAtExpiry(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	now := time.Now().Unix()
+	claimsJSON, _ := json.Marshal(claims{Sub: "user-123", Iat: now - 1, Exp: now})
+	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+	token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted token at exact expiry boundary, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_AcceptsTokenJustBeforeExpiry(t *testing.T) {
+	h := createJwtHandler("12345")
+	token, _ := h.createToken("user-123", 2*time.Second)
+
+	sub, err := h.getSubject(token)
+
+	if err != nil || sub != "user-123" {
+		t.Errorf("Validate rejected still-valid token: sub=%q err=%v", sub, err)
+	}
+}
+
+func TestValidate_RejectsFutureIat(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	future := time.Now().Add(time.Hour).Unix()
+	claimsJSON, _ := json.Marshal(claims{Sub: "user-123", Iat: future, Exp: future + 3600})
+	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+	token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted token with iat in the future, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_RejectsEmptySubjectInClaims(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	now := time.Now().Unix()
+	claimsJSON, _ := json.Marshal(claims{Sub: "", Iat: now, Exp: now + 3600})
+	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+	// Sign this forged-but-correctly-signed claims block with the
+	// legitimate key, to isolate the empty-sub check from signature
+	// verification.
+	token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
+
+	sub, err := h.getSubject(token)
+
+	if err == nil {
+		t.Errorf("Validate accepted token with empty sub claim, returned sub=%q", sub)
+	}
+}
+
+func TestValidate_IatExpBoundaries(t *testing.T) {
+	h := createJwtHandler("12345")
+	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+	now := time.Now()
+
+	tests := []struct {
+		name string
+		iat  int64
+		exp  int64
+		want string
+	}{
+		{
+			name: "iat max int64",
+			iat:  math.MaxInt64,
+			exp:  now.Add(time.Hour).Unix(),
+			want: "token not yet valid",
+		},
+		{
+			name: "iat min int64",
+			iat:  math.MinInt64,
+			exp:  now.Add(time.Hour).Unix(),
+			want: "",
+		},
+		{
+			name: "exp max int64",
+			iat:  now.Unix(),
+			exp:  math.MaxInt64,
+			want: "",
+		},
+		{
+			name: "exp min int64",
+			iat:  now.Unix(),
+			exp:  math.MinInt64,
+			want: "token expired",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claimsJSON, err := json.Marshal(claims{Sub: "user-123", Iat: tt.iat, Exp: tt.exp})
+			if err != nil {
+				t.Fatalf("marshal claims: %v", err)
+			}
+			token := buildRawToken(t, h.privateKey, headerJSON, claimsJSON)
+
+			_, err = h.getSubject(token)
+			if tt.want == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if !strings.Contains(err.Error(), tt.want) {
+					t.Errorf("expected error containing %q, got %v", tt.want, err)
+				}
+			}
+		})
+	}
+}
+
+func TestValidate_ClaimsNumberOverflow(t *testing.T) {
+	h := createJwtHandler("12345")
+	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+
+	// exp = MaxInt64 + 1 cannot be represented as int64.
+	claimsStr := fmt.Sprintf(
+		`{"sub":"user-123","iat":%d,"exp":9223372036854775808}`,
+		time.Now().Unix(),
+	)
+	token := buildRawToken(t, h.privateKey, headerJSON, []byte(claimsStr))
+
+	_, err := h.getSubject(token)
+
+	if err == nil {
+		t.Error("expected error for overflow int64, got nil")
+	}
+}
+
+func TestValidate_RejectsMalformedTokens(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	validHeaderJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+	validHeaderB64 := b64(validHeaderJSON)
+
+	cases := map[string]string{
+		"empty string":          "",
+		"single segment":        "abc",
+		"two segments":          "abc.def",
+		"four segments":         "abc.def.ghi.jkl",
+		"only dots":             "..",
+		"invalid base64 header": "not-valid-b64!!.def.ghi",
+		"invalid base64 claims": "abc.not-valid-b64!!.ghi",
+		"invalid base64 sig":    "abc.def.not-valid-b64!!",
+		"header not JSON":       b64([]byte("not json")) + ".def.ghi",
+		"claims not JSON":       validHeaderB64 + "." + b64([]byte("not json")) + ".ghi",
+	}
+
+	for name, token := range cases {
+		t.Run(name, func(t *testing.T) {
+			sub, err := h.getSubject(token)
+			if err == nil {
+				t.Errorf("Validate(%q) = (%q, true), want ok=false", token, sub)
+			}
+		})
+	}
+}
+
+func TestValidate_DoesNotPanicOnAdversarialInput(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	inputs := []string{
+		"",
+		".",
+		"..",
+		"...",
+		strings.Repeat("a", 100000),
+		strings.Repeat("a", 100000000),
+		strings.Repeat("a.", 50000) + "a",
+		"\x00\x00\x00",
+		"🙂.🙂.🙂",
+		"a.b.c.d.e.f.g",
+	}
+
+	for _, in := range inputs {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("Validate(%.20q...) panicked: %v", in, r)
+				}
+			}()
+			h.getSubject(in)
+		}()
+	}
+}
+
+func TestValidate_DuplicateSubjectKeys(t *testing.T) {
+	h := createJwtHandler("12345")
+
+	now := time.Now()
+	claimsStr := fmt.Sprintf(
+		`{"sub":"user1","sub":"admin","iat":%d,"exp":%d}`,
+		now.Unix(), now.Add(time.Hour).Unix(),
+	)
+	headerJSON, _ := json.Marshal(header{Alg: algorithm, Typ: "JWT"})
+	token := buildRawToken(t, h.privateKey, headerJSON, []byte(claimsStr))
+
+	_, err := h.getSubject(token)
+
+	if err == nil {
+		t.Fatalf("expected decode to fail")
+	}
+}
+
+func TestCreate_TokensForSameSubjectAreNotIdentical(t *testing.T) {
+	// Not a strict security requirement, but a sanity check that
+	// iat/exp are actually being set per-call rather than cached.
+	h := createJwtHandler("12345")
+
+	t1, _ := h.createToken("user-123", time.Hour)
+	time.Sleep(1100 * time.Millisecond) // ensure iat (second resolution) differs
+	t2, _ := h.createToken("user-123", time.Hour)
+
+	if t1 == t2 {
+		t.Error("two tokens created at different times for the same subject were identical")
+	}
+}
