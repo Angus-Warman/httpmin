@@ -11,11 +11,11 @@ import (
 //go:embed public
 var publicFiles embed.FS
 
-func echo(socket *response.Socket) {
-	defer socket.Close(1000, "bye")
+func echo(ws *response.Socket) {
+	defer ws.Close()
 
 	for {
-		msg, err := socket.Read()
+		msg, err := ws.Read()
 		if err != nil {
 			log.Printf("read: %v", err)
 			return
@@ -23,7 +23,7 @@ func echo(socket *response.Socket) {
 
 		log.Printf("received: %s", msg)
 
-		if err := socket.Send("echo: " + msg); err != nil {
+		if err := ws.Send("echo: " + msg); err != nil {
 			log.Printf("send: %v", err)
 			return
 		}

@@ -435,6 +435,20 @@ func (ws *Socket) Read() (string, error) {
 	return string(msg.Payload), nil
 }
 
+func (ws *Socket) ReadBytes() ([]byte, error) {
+	msg, err := ws.readMessage()
+
+	if err != nil {
+		return nil, err
+	}
+
+	if msg.Opcode != OpBinary {
+		return nil, fmt.Errorf("read: unexpected message type: %v", msg.Opcode)
+	}
+
+	return msg.Payload, nil
+}
+
 // readMessage reads the next complete application message, transparently
 // reassembling fragmented frames and handling/auto-responding to control
 // frames (ping -> pong) that arrive interleaved between fragments. It
@@ -587,10 +601,10 @@ func isValidCloseCode(code int) bool {
 // already been sent) and closes the underlying connection. It does not wait
 // for the peer's close frame in response; callers using ReadMessage in a
 // loop will observe that as a CloseError return.
-//
-// code must be a valid RFC 6455 close code (e.g. StatusNormalClosure); pass
-// StatusNormalClosure for a plain, no-error close.
-func (ws *Socket) Close(code int, reason string) error {
+func (ws *Socket) Close() error {
+	code := 1000
+	reason := "closing"
+
 	err := ws.sendCloseLocked(code, reason)
 	ws.rwc.Close()
 	return err
