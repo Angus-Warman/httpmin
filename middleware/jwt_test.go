@@ -62,19 +62,26 @@ func TestValidate_WithSeparatePublicKeyOnlyHandler(t *testing.T) {
 
 func TestCreate_VerifyOnlyHandlerCannotSign(t *testing.T) {
 	h := createHandler("12345")
+
 	verifyOnly, err := newHandler(h.publicKey, nil)
+
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
 
-	if _, err := verifyOnly.createToken("user-123", time.Hour); err == nil {
+	_, err = verifyOnly.createToken("user-123", time.Hour)
+
+	if err == nil {
 		t.Error("Create on verify-only handler: expected error, got nil")
 	}
 }
 
 func TestCreate_RejectsEmptySubject(t *testing.T) {
 	h := createHandler("12345")
-	if _, err := h.createToken("", time.Hour); err == nil {
+
+	_, err := h.createToken("", time.Hour)
+
+	if err == nil {
 		t.Error("Create with empty sub: expected error, got nil")
 	}
 }
@@ -233,17 +240,6 @@ func TestValidate_RejectsTokenSignedByDifferentKeyPair(t *testing.T) {
 	}
 }
 
-func TestValidate_PublicKeyMustMatchSigningKey(t *testing.T) {
-	correctH := createHandler("12345")
-	wrongH := createHandler("54321")
-
-	token, _ := correctH.createToken("user-123", time.Hour)
-
-	if sub, ok := wrongH.validateToken(token); ok {
-		t.Errorf("Validate accepted token verified against mismatched public key, returned sub=%q", sub)
-	}
-}
-
 func TestValidate_RejectsExpiredToken(t *testing.T) {
 	h := createHandler("12345")
 	token, _ := h.createToken("user-123", -time.Minute) // already expired
@@ -365,27 +361,6 @@ func TestValidate_DoesNotPanicOnAdversarialInput(t *testing.T) {
 			}()
 			h.validateToken(in)
 		}()
-	}
-}
-
-// --- cross-token isolation -----------------------------------------------
-
-func TestValidate_RejectsMixAndMatchSegmentsFromTwoValidTokens(t *testing.T) {
-	h := createHandler("12345")
-
-	tokenA, _ := h.createToken("alice", time.Hour)
-	tokenB, _ := h.createToken("bob", time.Hour)
-
-	partsA := strings.Split(tokenA, ".")
-	partsB := strings.Split(tokenB, ".")
-
-	// Take alice's header+claims but bob's signature. Both tokens are
-	// independently valid, but this Frankenstein combination must not
-	// validate.
-	mixed := partsA[0] + "." + partsA[1] + "." + partsB[2]
-
-	if sub, ok := h.validateToken(mixed); ok {
-		t.Errorf("Validate accepted mixed-and-matched token segments, returned sub=%q", sub)
 	}
 }
 

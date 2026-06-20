@@ -29,6 +29,19 @@ type keyHandler struct {
 	privateKey ed25519.PrivateKey
 }
 
+func jsonTo[T any](data []byte) (T, error) {
+	var into T
+
+	err := json.Unmarshal(data, &into)
+
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+
+	return into, nil
+}
+
 func newHandler(pub ed25519.PublicKey, priv ed25519.PrivateKey) (*keyHandler, error) {
 	if len(pub) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("jwt: public key must be %d bytes", ed25519.PublicKeySize)
@@ -97,12 +110,15 @@ func (h *keyHandler) validateToken(token string) (sub string, ok bool) {
 	}
 	headerB64, claimsB64, sigB64 := parts[0], parts[1], parts[2]
 
-	var hdr header
 	headerJSON, err := base64.RawURLEncoding.DecodeString(headerB64)
+
 	if err != nil {
 		return "", false
 	}
-	if err := json.Unmarshal(headerJSON, &hdr); err != nil {
+
+	hdr, err := jsonTo[header](headerJSON)
+
+	if err != nil {
 		return "", false
 	}
 
@@ -129,9 +145,9 @@ func (h *keyHandler) validateToken(token string) (sub string, ok bool) {
 		return "", false
 	}
 
-	var c claims
+	c, err := jsonTo[claims](claimsJSON)
 
-	if err := json.Unmarshal(claimsJSON, &c); err != nil {
+	if err != nil {
 		return "", false
 	}
 
