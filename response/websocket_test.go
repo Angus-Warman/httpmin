@@ -16,7 +16,7 @@ import (
 
 func echo(conn *Socket) {
 	for {
-		msg, err := conn.ReadMessage()
+		msg, err := conn.readMessage()
 		if err != nil {
 			return
 		}
@@ -82,7 +82,7 @@ func dialAndHandshake(t *testing.T, addr string) *rawClient {
 }
 
 // writeClientFrame writes a masked frame, as a real client must.
-func (c *rawClient) writeClientFrame(t *testing.T, fin bool, opcode Opcode, payload []byte) {
+func (c *rawClient) writeClientFrame(t *testing.T, fin bool, opcode opcode, payload []byte) {
 	t.Helper()
 	var hdr []byte
 	b0 := byte(opcode)
@@ -136,7 +136,7 @@ func (c *rawClient) readServerFrame(t *testing.T) frame {
 		t.Fatalf("read byte1: %v", err)
 	}
 	fin := hdr[0]&0x80 != 0
-	opcode := Opcode(hdr[0] & 0x0F)
+	opcode := opcode(hdr[0] & 0x0F)
 	masked := hdr[1]&0x80 != 0
 	if masked {
 		t.Fatalf("server sent a masked frame, which violates RFC 6455 5.1")

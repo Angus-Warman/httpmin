@@ -32,21 +32,21 @@ func WebSocket(handler func(*Socket)) http.Handler {
 // to produce the Sec-WebSocket-Accept header.
 const websocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-// Opcode identifies the type of a WebSocket frame, per RFC 6455 section 5.2.
-type Opcode byte
+// opcode identifies the type of a WebSocket frame, per RFC 6455 section 5.2.
+type opcode byte
 
 const (
-	OpContinuation Opcode = 0x0
-	OpText         Opcode = 0x1
-	OpBinary       Opcode = 0x2
+	OpContinuation opcode = 0x0
+	OpText         opcode = 0x1
+	OpBinary       opcode = 0x2
 	// 0x3-0x7 reserved for future non-control frames
-	OpClose Opcode = 0x8
-	OpPing  Opcode = 0x9
-	OpPong  Opcode = 0xA
+	OpClose opcode = 0x8
+	OpPing  opcode = 0x9
+	OpPong  opcode = 0xA
 	// 0xB-0xF reserved for future control frames
 )
 
-func (o Opcode) isControl() bool {
+func (o opcode) isControl() bool {
 	return o >= OpClose
 }
 
@@ -78,7 +78,7 @@ const DefaultMaxMessageSize = 16 * 1024 * 1024 // 16 MiB
 // frames into a complete *message* for the caller.
 type frame struct {
 	fin     bool
-	opcode  Opcode
+	opcode  opcode
 	payload []byte
 }
 
@@ -227,7 +227,7 @@ func (ws *Socket) readFrame() (frame, error) {
 
 	fin := hdr[0]&0x80 != 0
 	rsv := hdr[0] & 0x70
-	opcode := Opcode(hdr[0] & 0x0F)
+	opcode := opcode(hdr[0] & 0x0F)
 	masked := hdr[1]&0x80 != 0
 	payloadLen7 := hdr[1] & 0x7F
 
@@ -314,7 +314,7 @@ func applyMask(payload []byte, key [4]byte) {
 // ---- Frame writing ----
 
 // writeFrame encodes and writes a single frame. Caller must hold writeMu.
-func (ws *Socket) writeFrameLocked(fin bool, opcode Opcode, payload []byte) error {
+func (ws *Socket) writeFrameLocked(fin bool, opcode opcode, payload []byte) error {
 	var hdr []byte
 	b0 := byte(opcode)
 	if fin {
@@ -398,7 +398,7 @@ func (ws *Socket) SendBytes(data []byte) error {
 // writeControl sends a control frame (ping/pong/close). Safe for concurrent
 // use; serialized against WriteMessage via the same mutex so frames never
 // interleave on the wire.
-func (ws *Socket) writeControl(opcode Opcode, payload []byte) error {
+func (ws *Socket) writeControl(opcode opcode, payload []byte) error {
 	if len(payload) > maxControlFramePayload {
 		return fmt.Errorf("websocket: control frame payload exceeds %d bytes", maxControlFramePayload)
 	}
@@ -417,20 +417,34 @@ func (ws *Socket) WritePong(payload []byte) error { return ws.writeControl(OpPon
 
 // Message represents a complete, reassembled application message.
 type Message struct {
-	Opcode  Opcode // OpText or OpBinary
+	Opcode  opcode // OpText or OpBinary
 	Payload []byte
 }
 
-// ReadMessage reads the next complete application message, transparently
+func (ws *Socket) Read() (string, error) {
+	msg, err := ws.readMessage()
+
+	if err != nil {
+		return "", err
+	}
+
+	if msg.Opcode != OpText {
+		return "", fmt.Errorf("read: unexpected message type: %v", msg.Opcode)
+	}
+
+	return string(msg.Payload), nil
+}
+
+// readMessage reads the next complete application message, transparently
 // reassembling fragmented frames and handling/auto-responding to control
 // frames (ping -> pong) that arrive interleaved between fragments. It
 // returns io.EOF (or a wrapped close error) when the peer closes the
 // connection.
 //
 // Must be called from a single goroutine at a time.
-func (ws *Socket) ReadMessage() (Message, error) {
+func (ws *Socket) readMessage() (Message, error) {
 	var (
-		msgOpcode Opcode
+		msgOpcode opcode
 		buf       []byte
 		started   bool
 	)
@@ -512,7 +526,7 @@ func (ws *Socket) ReadMessage() (Message, error) {
 
 // finishMessage validates a fully-reassembled message (UTF-8 for text
 // frames, per RFC 6455 8.1) before handing it to the caller.
-func (ws *Socket) finishMessage(opcode Opcode, payload []byte) (Message, error) {
+func (ws *Socket) finishMessage(opcode opcode, payload []byte) (Message, error) {
 	if opcode == OpText && !utf8.Valid(payload) {
 		_ = ws.sendCloseLocked(StatusInvalidPayload, "invalid UTF-8 in text message")
 		ws.rwc.Close()
