@@ -107,17 +107,23 @@ func (h *jwtHandler) getSubject(token string) (string, error) {
 		return "", err
 	}
 
-	return c.Sub, err
+	return c.Sub, nil
 }
 
 func (h *jwtHandler) validateToken(token string) (claims, error) {
 	var zero claims
 
 	parts := strings.Split(token, ".")
+
 	if len(parts) != 3 {
 		return zero, errors.New("jwt: malformed token")
 	}
+
 	headerB64, claimsB64, sigB64 := parts[0], parts[1], parts[2]
+
+	if len(headerB64) == 0 || len(claimsB64) == 0 || len(sigB64) == 0 {
+		return zero, errors.New("jwt: malformed token")
+	}
 
 	headerJSON, err := base64.RawURLEncoding.DecodeString(headerB64)
 
@@ -162,11 +168,19 @@ func (h *jwtHandler) validateToken(token string) (claims, error) {
 
 	now := time.Now().Unix()
 
-	if c.Exp != 0 && now >= c.Exp {
+	if c.Exp == 0 {
+		return zero, errors.New("jwt: no expiry")
+	}
+
+	if c.Iat == 0 {
+		return zero, errors.New("jwt: no iat")
+	}
+
+	if now >= c.Exp {
 		return zero, errors.New("jwt: token expired")
 	}
 
-	if c.Iat != 0 && now < c.Iat {
+	if now < c.Iat {
 		return zero, errors.New("jwt: token not yet valid")
 	}
 
