@@ -24,13 +24,16 @@ func Stream(operation func(r *http.Request, notify func(event string)) error) ht
 		w.Header().Set("X-Accel-Buffering", "no")
 
 		notify := func(event string) {
+			if r.Context().Err() != nil {
+				return
+			}
 			fmt.Fprintf(w, "data: %s\n\n", event)
 			flusher.Flush()
 		}
 
 		err := operation(r, notify)
 
-		if err != nil {
+		if err != nil && r.Context().Err() == nil {
 			notify(err.Error())
 		}
 	})

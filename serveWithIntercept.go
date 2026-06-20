@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func serveWithIntercept(server *http.Server) error {
+func serveWithIntercept(server *http.Server, cancel context.CancelFunc) error {
 	// Collect errors
 	serverErr := make(chan error, 1)
 
@@ -34,6 +34,10 @@ func serveWithIntercept(server *http.Server) error {
 	case sig := <-quit:
 		server.ErrorLog.Printf("signal %v, shutting down...\n", sig)
 	}
+
+	// Cancel the server-level context so all in-flight requests
+	// (especially SSE streams) can detect shutdown via r.Context().Done().
+	cancel()
 
 	// Give in-flight requests time to complete
 	timeout := 2 * time.Second

@@ -1,10 +1,12 @@
 package httpmin
 
 import (
+	"context"
 	"crypto/tls"
 	"embed"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 
@@ -23,6 +25,8 @@ type Chassis struct {
 	keyFile              string
 	certFolder           string
 	useDefaultMiddleware bool
+	baseCtx              context.Context
+	cancelCtx            context.CancelFunc
 }
 
 // Plain option, will serve http://localhost:8080 unless env variables specify
@@ -202,10 +206,15 @@ func (c *Chassis) Server() (*http.Server, error) {
 	ip := envOrDefault("IP", c.ip)
 	addr := fmt.Sprintf("%v:%v", ip, port)
 
+	c.baseCtx, c.cancelCtx = context.WithCancel(context.Background())
+
 	server := &http.Server{
 		Addr:     addr,
 		Handler:  handler,
 		ErrorLog: c.logger,
+		BaseContext: func(net.Listener) context.Context {
+			return c.baseCtx
+		},
 	}
 
 	if c.protocol == "https" {
@@ -244,7 +253,7 @@ func (c *Chassis) Serve() error {
 
 	printAddresses(server)
 
-	return serveWithIntercept(server)
+	return serveWithIntercept(server, c.cancelCtx)
 }
 
 // Serves, printing any errors and exiting on a failure
