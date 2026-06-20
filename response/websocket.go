@@ -15,6 +15,18 @@ import (
 	"unicode/utf8"
 )
 
+func WebSocket(handler func(*Socket)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		socket, err := upgrade(w, r)
+
+		if err != nil {
+			return // upgrade handles responding to invalid requests
+		}
+
+		handler(socket)
+	})
+}
+
 // websocketGUID is the magic string defined in RFC 6455 section 1.3,
 // concatenated with the client's Sec-WebSocket-Key before SHA-1 hashing
 // to produce the Sec-WebSocket-Accept header.

@@ -14,26 +14,25 @@ import (
 	"time"
 )
 
+func echo(conn *Socket) {
+	for {
+		msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		if err := conn.Send(string(msg.Payload)); err != nil {
+			return
+		}
+	}
+}
+
 // startEchoServer spins up a real TCP listener running an echo handler,
 // returning its address and a cleanup func.
 func startEchoServer(t *testing.T) string {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrade(w, r)
-		if err != nil {
-			return
-		}
-		for {
-			msg, err := conn.ReadMessage()
-			if err != nil {
-				return
-			}
-			if err := conn.Send(string(msg.Payload)); err != nil {
-				return
-			}
-		}
-	})
+	mux.Handle("/", WebSocket(echo))
+
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return strings.TrimPrefix(srv.URL, "http://")
