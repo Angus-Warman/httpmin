@@ -15,18 +15,19 @@ import (
 )
 
 type Chassis struct {
-	Mux                  *http.ServeMux
-	protocol             string
-	ip                   string
-	port                 string
-	logger               *log.Logger
-	middlewares          []func(http.Handler) http.Handler
-	certFile             string
-	keyFile              string
-	certFolder           string
-	useDefaultMiddleware bool
-	baseCtx              context.Context
-	cancelCtx            context.CancelFunc
+	Mux                    *http.ServeMux
+	protocol               string
+	ip                     string
+	port                   string
+	logger                 *log.Logger
+	middlewares            []func(http.Handler) http.Handler
+	certFile               string
+	keyFile                string
+	certFolder             string
+	useDefaultMiddleware   bool
+	defaultMiddlewareAdded bool
+	baseCtx                context.Context
+	cancelCtx              context.CancelFunc
 }
 
 // Plain option, will serve http://localhost:8080 unless env variables specify
@@ -164,8 +165,12 @@ func (c *Chassis) UseDefaultMiddleware(use bool) *Chassis {
 }
 
 func (c *Chassis) addDefaultMiddleware() {
+	if c.defaultMiddlewareAdded {
+		return
+	}
+	c.defaultMiddlewareAdded = true
+	c.Use(middleware.RecoverPanics(c.logger))
 	c.Use(middleware.LogRequests(c.logger))
-	c.Use(middleware.RecoverPanics(c.logger)) // Added last
 }
 
 func (c *Chassis) handlerWithMiddleware() http.Handler {
@@ -204,7 +209,7 @@ func (c *Chassis) Server() (*http.Server, error) {
 
 	port := envOrDefault("PORT", c.port)
 	ip := envOrDefault("IP", c.ip)
-	addr := fmt.Sprintf("%v:%v", ip, port)
+	addr := net.JoinHostPort(ip, port)
 
 	c.baseCtx, c.cancelCtx = context.WithCancel(context.Background())
 

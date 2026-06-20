@@ -33,7 +33,7 @@ func Stats() http.Handler {
 			"uptime":     uptime,
 			"memAllocMB": mem.Alloc / 1024 / 1024, // currently allocated
 			"memSysMB":   mem.Sys / 1024 / 1024,   // total from OS
-			"routinues":  runtime.NumGoroutine(),
+			"goroutines":  runtime.NumGoroutine(),
 			"host":       host,
 		}
 

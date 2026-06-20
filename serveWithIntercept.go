@@ -41,10 +41,10 @@ func serveWithIntercept(server *http.Server, cancel context.CancelFunc) error {
 
 	// Give in-flight requests time to complete
 	timeout := 2 * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
+	shutdownCtx, shutdownFunc := context.WithTimeout(context.Background(), timeout)
+	defer shutdownFunc()
 
-	err := server.Shutdown(ctx)
+	err := server.Shutdown(shutdownCtx)
 
 	if err != nil {
 		return err

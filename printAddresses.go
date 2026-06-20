@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 )
 
 func printAddresses(server *http.Server) {
-	ip, port, ok := strings.Cut(server.Addr, ":")
+	ip, port, err := net.SplitHostPort(server.Addr)
 
-	if !ok {
+	if err != nil {
 		return
 	}
 
@@ -38,14 +37,14 @@ func getAddresses(protocol, ip, port string) []string {
 	addresses := []string{}
 
 	if ip != "0.0.0.0" {
-		addresses = append(addresses, fmt.Sprintf("%v://%v:%v", protocol, ip, port))
+		addresses = append(addresses, fmt.Sprintf("%v://%v", protocol, net.JoinHostPort(ip, port)))
 		return addresses
 	}
 
 	ifaces, err := net.Interfaces()
 
 	if err != nil {
-		addresses = append(addresses, fmt.Sprintf("%v://%v:%v", protocol, ip, port))
+		addresses = append(addresses, fmt.Sprintf("%v://%v", protocol, net.JoinHostPort(ip, port)))
 		return addresses
 	}
 
@@ -65,7 +64,7 @@ func getAddresses(protocol, ip, port string) []string {
 			if ip == nil || ip.To4() == nil || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
 				continue
 			}
-			addresses = append(addresses, fmt.Sprintf("%v://%v:%v", protocol, ip, port))
+			addresses = append(addresses, fmt.Sprintf("%v://%v", protocol, net.JoinHostPort(ip.String(), port)))
 		}
 	}
 

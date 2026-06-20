@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net"
 	"os"
@@ -98,7 +99,7 @@ func selfSignedFromFolder(path string) (tls.Certificate, error) {
 	privKey, ok := cert.PrivateKey.(*rsa.PrivateKey)
 
 	if !ok {
-		return tls.Certificate{}, err
+		return tls.Certificate{}, errors.New("private key is not RSA")
 	}
 
 	keyPEM := pem.EncodeToMemory(&pem.Block{
@@ -106,7 +107,7 @@ func selfSignedFromFolder(path string) (tls.Certificate, error) {
 		Bytes: x509.MarshalPKCS1PrivateKey(privKey),
 	})
 
-	err = os.MkdirAll(path, 0644)
+	err = os.MkdirAll(path, 0755)
 
 	if err != nil {
 		return tls.Certificate{}, err

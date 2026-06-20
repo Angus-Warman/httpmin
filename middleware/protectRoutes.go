@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -85,9 +86,9 @@ func (c *ProtectRoutesConfig) invalidCredentials(w http.ResponseWriter, r *http.
 }
 
 func (c *ProtectRoutesConfig) redirect(w http.ResponseWriter, r *http.Request) {
-	returnTo := r.URL.Path
-
-	redirectURL := fmt.Sprintf("%v?returnTo=%v", c.Redirect, returnTo)
+	v := url.Values{}
+	v.Set("returnTo", r.URL.Path)
+	redirectURL := fmt.Sprintf("%v?%v", c.Redirect, v.Encode())
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
@@ -157,9 +158,7 @@ func Authorize(subject string, w http.ResponseWriter) error {
 	secret, ok := os.LookupEnv(ProtectRoutesSettings.JwtSecretEnvKey)
 
 	if !ok {
-		err := fmt.Errorf("%v environment variable not set", ProtectRoutesSettings.JwtSecretEnvKey)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return err
+		return fmt.Errorf("%v environment variable not set", ProtectRoutesSettings.JwtSecretEnvKey)
 	}
 
 	jwtHandler := createJwtHandler(secret)
@@ -167,8 +166,7 @@ func Authorize(subject string, w http.ResponseWriter) error {
 	tokenString, err := jwtHandler.createToken(subject, ProtectRoutesSettings.TokenExpiry)
 
 	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
-		return err
+		return fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	http.SetCookie(w, &http.Cookie{

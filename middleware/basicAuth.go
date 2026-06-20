@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"os"
@@ -31,7 +32,9 @@ func BasicAuth() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, pass, ok := r.BasicAuth()
 
-			if !ok || user != username || pass != password {
+			if !ok ||
+				subtle.ConstantTimeCompare([]byte(user), []byte(username)) != 1 ||
+				subtle.ConstantTimeCompare([]byte(pass), []byte(password)) != 1 {
 				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
