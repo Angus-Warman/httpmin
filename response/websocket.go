@@ -63,32 +63,51 @@ func (ws *WebSocketConnection) SendBytes(data []byte) error {
 
 // Must be called from a single goroutine only
 func (ws *WebSocketConnection) Read() (string, error) {
-	msg, err := ws.readMessage()
+	msg, err := ws.ReadMessage()
 
 	if err != nil {
 		return "", err
 	}
 
-	if msg.op != opText {
-		return "", fmt.Errorf("read: unexpected message type: %v", msg.op)
+	if msg.IsBinary {
+		return "", fmt.Errorf("read: expected string but received binary message")
 	}
 
-	return string(msg.payload), nil
+	return string(msg.Payload), nil
 }
 
 // Must be called from a single goroutine only
 func (ws *WebSocketConnection) ReadBytes() ([]byte, error) {
-	msg, err := ws.readMessage()
+	msg, err := ws.readMessageInternal()
 
 	if err != nil {
 		return nil, err
 	}
 
-	if msg.op != opBinary {
-		return nil, fmt.Errorf("read: unexpected message type: %v", msg.op)
+	return msg.payload, nil
+}
+
+type WebSocketMessage struct {
+	Payload  []byte
+	IsBinary bool
+}
+
+// Must be called from a single goroutine only
+func (ws *WebSocketConnection) ReadMessage() (WebSocketMessage, error) {
+	var zero WebSocketMessage
+
+	msg, err := ws.readMessageInternal()
+
+	if err != nil {
+		return zero, err
 	}
 
-	return msg.payload, nil
+	isBinary := msg.op == opBinary
+
+	return WebSocketMessage{
+		Payload:  msg.payload,
+		IsBinary: isBinary,
+	}, err
 }
 
 func (ws *WebSocketConnection) Close() error {
@@ -431,14 +450,14 @@ type socketMessage struct {
 	payload []byte
 }
 
-// readMessage reads the next complete application message, transparently
+// readMessageInternal reads the next complete application message, transparently
 // reassembling fragmented frames and handling/auto-responding to control
 // frames (ping -> pong) that arrive interleaved between fragments. It
 // returns io.EOF (or a wrapped close error) when the peer closes the
 // connection.
 //
 // Must be called from a single goroutine at a time.
-func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
+func (ws *WebSocketConnection) readMessageInternal() (socketMessage, error) {
 	var (
 		zero      socketMessage
 		msgOpcode opCode

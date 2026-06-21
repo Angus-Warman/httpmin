@@ -27,8 +27,6 @@ func echo(conn *WebSocketConnection) {
 	}
 }
 
-// startEchoServer spins up a real TCP listener running an echo handler,
-// returning its address and a cleanup func.
 func startEchoServer(t *testing.T) string {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -39,9 +37,6 @@ func startEchoServer(t *testing.T) string {
 	return strings.TrimPrefix(srv.URL, "http://")
 }
 
-// rawClient is a minimal hand-rolled WS client over a raw net.Conn, used so
-// the test exercises the actual wire format rather than relying on another
-// WS library (which would partially defeat the point of testing our codec).
 type rawClient struct {
 	conn net.Conn
 	br   *bufio.Reader
@@ -82,7 +77,7 @@ func dialAndHandshake(t *testing.T, addr string) *rawClient {
 	return &rawClient{conn: conn, br: br}
 }
 
-// writeClientFrame writes a masked frame, as a real client must.
+// writeClientFrame writes a masked frame
 func (c *rawClient) writeClientFrame(t *testing.T, fin bool, opcode opCode, payload []byte) {
 	t.Helper()
 	var hdr []byte
@@ -125,8 +120,6 @@ func (c *rawClient) writeClientFrame(t *testing.T, fin bool, opcode opCode, payl
 	}
 }
 
-// readServerFrame reads one (unmasked, since server->client frames are
-// never masked) frame from the server.
 func (c *rawClient) readServerFrame(t *testing.T) frame {
 	t.Helper()
 	var hdr [2]byte

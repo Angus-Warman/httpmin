@@ -12,8 +12,6 @@ import (
 var publicFiles embed.FS
 
 func echo(ws *response.WebSocketConnection) {
-	response.
-
 	defer ws.Close()
 
 	for {
