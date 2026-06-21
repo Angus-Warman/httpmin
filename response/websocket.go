@@ -92,7 +92,7 @@ func (ws *WebSocketConnection) ReadBytes() ([]byte, error) {
 }
 
 func (ws *WebSocketConnection) Close() error {
-	code := 1000
+	code := statusNormalClosure
 	reason := "closing"
 
 	err := ws.sendCloseFrame(code, reason)
