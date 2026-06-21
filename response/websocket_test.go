@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func echo(conn *Socket) {
+func echo(conn *WebSocketConnection) {
 	for {
 		msg, err := conn.readMessage()
 		if err != nil {
@@ -82,7 +82,7 @@ func dialAndHandshake(t *testing.T, addr string) *rawClient {
 }
 
 // writeClientFrame writes a masked frame, as a real client must.
-func (c *rawClient) writeClientFrame(t *testing.T, fin bool, opcode opcode, payload []byte) {
+func (c *rawClient) writeClientFrame(t *testing.T, fin bool, opcode opCode, payload []byte) {
 	t.Helper()
 	var hdr []byte
 	b0 := byte(opcode)
@@ -136,7 +136,7 @@ func (c *rawClient) readServerFrame(t *testing.T) frame {
 		t.Fatalf("read byte1: %v", err)
 	}
 	fin := hdr[0]&0x80 != 0
-	opcode := opcode(hdr[0] & 0x0F)
+	opcode := opCode(hdr[0] & 0x0F)
 	masked := hdr[1]&0x80 != 0
 	if masked {
 		t.Fatalf("server sent a masked frame, which violates RFC 6455 5.1")
@@ -183,10 +183,10 @@ func TestHandshakeAndEchoTextMessage(t *testing.T) {
 	c := dialAndHandshake(t, addr)
 	defer c.conn.Close()
 
-	c.writeClientFrame(t, true, OpText, []byte("hello autobahn"))
+	c.writeClientFrame(t, true, opText, []byte("hello autobahn"))
 	got := c.readServerFrame(t)
 
-	if got.opcode != OpText {
+	if got.opcode != opText {
 		t.Errorf("opcode = %v, want OpText", got.opcode)
 	}
 	if !bytes.Equal(got.payload, []byte("hello autobahn")) {
@@ -203,9 +203,9 @@ func TestFragmentedMessageReassembly(t *testing.T) {
 	defer c.conn.Close()
 
 	// Send "hello world" split across 3 fragments.
-	c.writeClientFrame(t, false, OpText, []byte("hello"))
-	c.writeClientFrame(t, false, OpContinuation, []byte(" "))
-	c.writeClientFrame(t, true, OpContinuation, []byte("world"))
+	c.writeClientFrame(t, false, opText, []byte("hello"))
+	c.writeClientFrame(t, false, opContinuation, []byte(" "))
+	c.writeClientFrame(t, true, opContinuation, []byte("world"))
 
 	got := c.readServerFrame(t)
 	if !bytes.Equal(got.payload, []byte("hello world")) {
@@ -219,14 +219,14 @@ func TestPingInterleavedDuringFragmentation(t *testing.T) {
 	defer c.conn.Close()
 
 	// Start a fragmented message, send a ping mid-stream, finish the message.
-	c.writeClientFrame(t, false, OpText, []byte("part1"))
-	c.writeClientFrame(t, true, OpPing, []byte("ping-payload"))
-	c.writeClientFrame(t, true, OpContinuation, []byte("part2"))
+	c.writeClientFrame(t, false, opText, []byte("part1"))
+	c.writeClientFrame(t, true, opPing, []byte("ping-payload"))
+	c.writeClientFrame(t, true, opContinuation, []byte("part2"))
 
 	// Expect the pong first (server processes frames in order: ping arrives
 	// before the final continuation frame).
 	pong := c.readServerFrame(t)
-	if pong.opcode != OpPong {
+	if pong.opcode != opPong {
 		t.Fatalf("first frame back = %v, want OpPong", pong.opcode)
 	}
 	if !bytes.Equal(pong.payload, []byte("ping-payload")) {
@@ -245,19 +245,19 @@ func TestCloseHandshake(t *testing.T) {
 	defer c.conn.Close()
 
 	payload := make([]byte, 2)
-	binary.BigEndian.PutUint16(payload, StatusNormalClosure)
-	c.writeClientFrame(t, true, OpClose, payload)
+	binary.BigEndian.PutUint16(payload, statusNormalClosure)
+	c.writeClientFrame(t, true, opClose, payload)
 
 	got := c.readServerFrame(t)
-	if got.opcode != OpClose {
+	if got.opcode != opClose {
 		t.Fatalf("opcode = %v, want OpClose", got.opcode)
 	}
 	if len(got.payload) < 2 {
 		t.Fatalf("close payload too short: %v", got.payload)
 	}
 	code := binary.BigEndian.Uint16(got.payload[:2])
-	if code != StatusNormalClosure {
-		t.Errorf("echoed close code = %d, want %d", code, StatusNormalClosure)
+	if code != statusNormalClosure {
+		t.Errorf("echoed close code = %d, want %d", code, statusNormalClosure)
 	}
 }
 
@@ -267,15 +267,15 @@ func TestInvalidUTF8TextMessageGetsClosed(t *testing.T) {
 	defer c.conn.Close()
 
 	// 0xFF is never valid UTF-8.
-	c.writeClientFrame(t, true, OpText, []byte{0xFF, 0xFE})
+	c.writeClientFrame(t, true, opText, []byte{0xFF, 0xFE})
 
 	got := c.readServerFrame(t)
-	if got.opcode != OpClose {
+	if got.opcode != opClose {
 		t.Fatalf("opcode = %v, want OpClose (server should fail the connection)", got.opcode)
 	}
 	code := binary.BigEndian.Uint16(got.payload[:2])
-	if code != StatusInvalidPayload {
-		t.Errorf("close code = %d, want %d (invalid payload)", code, StatusInvalidPayload)
+	if code != statusInvalidPayload {
+		t.Errorf("close code = %d, want %d (invalid payload)", code, statusInvalidPayload)
 	}
 }
 
@@ -291,11 +291,11 @@ func TestUnmaskedClientFrameIsRejected(t *testing.T) {
 	c.conn.Write([]byte("hello"))
 
 	got := c.readServerFrame(t)
-	if got.opcode != OpClose {
+	if got.opcode != opClose {
 		t.Fatalf("opcode = %v, want OpClose", got.opcode)
 	}
 	code := binary.BigEndian.Uint16(got.payload[:2])
-	if code != StatusProtocolError {
-		t.Errorf("close code = %d, want %d", code, StatusProtocolError)
+	if code != statusProtocolError {
+		t.Errorf("close code = %d, want %d", code, statusProtocolError)
 	}
 }

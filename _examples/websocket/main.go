@@ -11,7 +11,9 @@ import (
 //go:embed public
 var publicFiles embed.FS
 
-func echo(ws *response.Socket) {
+func echo(ws *response.WebSocketConnection) {
+	response.
+
 	defer ws.Close()
 
 	for {
