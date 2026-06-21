@@ -28,11 +28,7 @@ func WebSocket(handler func(*WebSocketConnection)) http.Handler {
 	})
 }
 
-// WebSocketConnection is a single upgraded WebSocketConnection connection. It is safe to call
-// WriteMessage / WriteControl from multiple goroutines concurrently (writes
-// are serialized internally); ReadMessage must only be called from one
-// goroutine at a time (typically a single read loop), per standard Go
-// net.WebSocketConnection conventions.
+// WebSocketConnection is a single upgraded WebSocketConnection connection
 type WebSocketConnection struct {
 	MaxMessageSize int64
 	rwc            net.Conn
@@ -470,7 +466,7 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 			continue
 
 		case opPong:
-			// Unsolicited pongs are valid (e.g. heartbeats); nothing to do.
+			// Unsolicited pongs are valid, nothing to do
 			continue
 
 		case opClose:
@@ -593,7 +589,7 @@ func isValidCloseCode(code int) bool {
 // sendCloseLocked sends a close frame, unless one has already been sent for
 // this connection (the close handshake only ever sends one close frame per
 // side). The name is historical ("Locked" refers to closeMu guarding
-// closeSent below, not writeMu — writeControl acquires that itself).
+// closeSent below, not writeMu - writeControl acquires that itself).
 func (ws *WebSocketConnection) sendCloseLocked(code int, reason string) error {
 	ws.closeMu.Lock()
 	if ws.closeSent {
@@ -607,7 +603,7 @@ func (ws *WebSocketConnection) sendCloseLocked(code int, reason string) error {
 		// 1005/1006 are reserved for local use only and must never be sent
 		// on the wire (RFC 6455 7.4.1). This happens when the peer's close
 		// frame had no status (represented internally as 1005) and we're
-		// echoing it back — send a bare close frame with no payload instead
+		// echoing it back - send a bare close frame with no payload instead
 		// of leaking 1005/1006 onto the wire.
 		var empty []byte
 		return ws.writeControl(opClose, empty)
