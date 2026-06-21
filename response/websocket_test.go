@@ -16,11 +16,12 @@ import (
 
 func echo(conn *WebSocketConnection) {
 	for {
-		msg, err := conn.readMessage()
+		msg, err := conn.Read()
 		if err != nil {
 			return
 		}
-		if err := conn.Send(string(msg.Payload)); err != nil {
+
+		if err := conn.Send(msg); err != nil {
 			return
 		}
 	}

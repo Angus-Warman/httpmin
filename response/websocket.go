@@ -28,8 +28,10 @@ func WebSocket(handler func(*WebSocketConnection)) http.Handler {
 	})
 }
 
-// WebSocketConnection is a single upgraded WebSocketConnection connection
+// WebSocketConnection is a single upgraded WebSocket connection
 type WebSocketConnection struct {
+	// MaxMessageSize caps the total size of a reassembled (possibly fragmented)
+	// message. Defaults to 16 MB
 	MaxMessageSize int64
 	rwc            net.Conn
 	br             *bufio.Reader
@@ -67,11 +69,11 @@ func (ws *WebSocketConnection) Read() (string, error) {
 		return "", err
 	}
 
-	if msg.Opcode != opText {
-		return "", fmt.Errorf("read: unexpected message type: %v", msg.Opcode)
+	if msg.op != opText {
+		return "", fmt.Errorf("read: unexpected message type: %v", msg.op)
 	}
 
-	return string(msg.Payload), nil
+	return string(msg.payload), nil
 }
 
 // Must be called from a single goroutine only
@@ -82,18 +84,18 @@ func (ws *WebSocketConnection) ReadBytes() ([]byte, error) {
 		return nil, err
 	}
 
-	if msg.Opcode != opBinary {
-		return nil, fmt.Errorf("read: unexpected message type: %v", msg.Opcode)
+	if msg.op != opBinary {
+		return nil, fmt.Errorf("read: unexpected message type: %v", msg.op)
 	}
 
-	return msg.Payload, nil
+	return msg.payload, nil
 }
 
 func (ws *WebSocketConnection) Close() error {
 	code := 1000
 	reason := "closing"
 
-	err := ws.sendCloseLocked(code, reason)
+	err := ws.sendCloseFrame(code, reason)
 	ws.rwc.Close()
 	return err
 }
@@ -133,11 +135,6 @@ const (
 // maxControlFramePayload is the RFC 6455 hard limit (section 5.5): control
 // frame payloads MUST NOT exceed 125 bytes.
 const maxControlFramePayload = 125
-
-// MaxMessageSize caps the total size of a reassembled (possibly fragmented)
-// message. This guards against memory-exhaustion from a malicious or buggy
-// peer. 0 means "use defaultMaxMessageSize".
-const defaultMaxMessageSize = 16 * 1024 * 1024 // 16 MiB
 
 // frame is a single decoded WebSocket frame as it appears on the wire.
 // Note this is the *frame* layer; Conn.ReadMessage reassembles fragmented
@@ -222,6 +219,8 @@ func upgrade(w http.ResponseWriter, r *http.Request) (*WebSocketConnection, erro
 		rwc.Close()
 		return nil, fmt.Errorf("websocket: flushing handshake response: %w", err)
 	}
+
+	const defaultMaxMessageSize = 16 * 1024 * 1024 // 16 MiB
 
 	// brw.Reader may already have buffered bytes the client sent immediately
 	// after the handshake (some clients pipeline). Reuse it rather than
@@ -428,8 +427,8 @@ func (ws *WebSocketConnection) WritePong(payload []byte) error {
 
 // socketMessage represents a complete, reassembled application socketMessage.
 type socketMessage struct {
-	Opcode  opCode // OpText or OpBinary
-	Payload []byte
+	op      opCode // OpText or OpBinary
+	payload []byte
 }
 
 // readMessage reads the next complete application message, transparently
@@ -452,7 +451,7 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 		if err != nil {
 			var pe *protocolError
 			if errors.As(err, &pe) {
-				_ = ws.sendCloseLocked(pe.status, pe.msg)
+				_ = ws.sendCloseFrame(pe.status, pe.msg)
 				ws.rwc.Close()
 			}
 			return zero, err
@@ -472,7 +471,7 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 		case opClose:
 			code, reason, perr := parseClosePayload(f.payload)
 			if perr != nil {
-				_ = ws.sendCloseLocked(statusProtocolError, "invalid close payload")
+				_ = ws.sendCloseFrame(statusProtocolError, "invalid close payload")
 				ws.rwc.Close()
 				return zero, perr
 			}
@@ -482,7 +481,7 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 			ws.closeMu.Unlock()
 			if !alreadySent {
 				// Echo the close frame back (RFC 6455 5.5.1 closing handshake).
-				_ = ws.sendCloseLocked(code, reason)
+				_ = ws.sendCloseFrame(code, reason)
 			}
 			ws.rwc.Close()
 			return zero, &closeError{Code: code, Reason: reason}
@@ -494,7 +493,7 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 			msgOpcode = f.opcode
 			buf = append(buf, f.payload...)
 			if int64(len(buf)) > ws.MaxMessageSize {
-				_ = ws.sendCloseLocked(statusMessageTooBig, "message too big")
+				_ = ws.sendCloseFrame(statusMessageTooBig, "message too big")
 				ws.rwc.Close()
 				return zero, newProtocolErr(statusMessageTooBig, "message exceeds max size")
 			}
@@ -510,7 +509,7 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 			}
 			buf = append(buf, f.payload...)
 			if int64(len(buf)) > ws.MaxMessageSize {
-				_ = ws.sendCloseLocked(statusMessageTooBig, "message too big")
+				_ = ws.sendCloseFrame(statusMessageTooBig, "message too big")
 				ws.rwc.Close()
 				return zero, newProtocolErr(statusMessageTooBig, "message exceeds max size")
 			}
@@ -526,11 +525,11 @@ func (ws *WebSocketConnection) readMessage() (socketMessage, error) {
 // frames, per RFC 6455 8.1) before handing it to the caller.
 func (ws *WebSocketConnection) finishMessage(op opCode, payload []byte) (socketMessage, error) {
 	if op == opText && !utf8.Valid(payload) {
-		_ = ws.sendCloseLocked(statusInvalidPayload, "invalid UTF-8 in text message")
+		_ = ws.sendCloseFrame(statusInvalidPayload, "invalid UTF-8 in text message")
 		ws.rwc.Close()
 		return socketMessage{}, newProtocolErr(statusInvalidPayload, "invalid UTF-8 in text message")
 	}
-	return socketMessage{Opcode: op, Payload: payload}, nil
+	return socketMessage{op: op, payload: payload}, nil
 }
 
 // closeError is returned from ReadMessage when the peer initiated (or
@@ -581,16 +580,9 @@ func isValidCloseCode(code int) bool {
 	}
 }
 
-// Close performs the closing handshake: sends a close frame (if one hasn't
-// already been sent) and closes the underlying connection. It does not wait
-// for the peer's close frame in response; callers using ReadMessage in a
-// loop will observe that as a CloseError return.
-
-// sendCloseLocked sends a close frame, unless one has already been sent for
-// this connection (the close handshake only ever sends one close frame per
-// side). The name is historical ("Locked" refers to closeMu guarding
-// closeSent below, not writeMu - writeControl acquires that itself).
-func (ws *WebSocketConnection) sendCloseLocked(code int, reason string) error {
+// sendCloseFrame sends a close frame unless one has already been sent for
+// this connection (each side sends at most one close frame per handshake).
+func (ws *WebSocketConnection) sendCloseFrame(code int, reason string) error {
 	ws.closeMu.Lock()
 	if ws.closeSent {
 		ws.closeMu.Unlock()
