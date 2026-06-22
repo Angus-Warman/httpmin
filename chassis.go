@@ -47,14 +47,14 @@ func Blank() *Chassis {
 // Default option, reads .env file, logs incoming requests, handles panics, will serve http://localhost:8080 unless env variables specify
 func New() *Chassis {
 	c := Blank()
-	c.EnvFile(".env")
+	LoadEnvFileFrom(".env")
 	c.useDefaultMiddleware = true
 	return c
 }
 
 // Read a .env formatted file, setting any environment variables that aren't already set
 func (c *Chassis) EnvFile(path string) *Chassis {
-	readEnvFile(path)
+	LoadEnvFileFrom(path)
 	return c
 }
 

@@ -5,7 +5,11 @@ import (
 	"strings"
 )
 
-func readEnvFile(path string) {
+func LoadEnvFile() {
+	LoadEnvFileFrom(".env")
+}
+
+func LoadEnvFileFrom(path string) {
 	bytes, err := os.ReadFile(path)
 
 	if err != nil {
