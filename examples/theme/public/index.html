@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Theme Example</title>
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+  <h1>Theme Example</h1>
+  <p>
+    This page uses <code>httpmin.Theme()</code> to serve <code>/theme.css</code>.
+    Your own custom styles go in <code>styles.css</code>.
+  </p>
+
+  <h2>Grid</h2>
+  <div class="row">
+    <div class="column">
+      <h3>Column One</h3>
+      <p>Rows and columns use flexbox with <code>gap: 1rem</code>. Each column grows to fill available space and wraps when the viewport is narrow.</p>
+    </div>
+    <div class="column">
+      <h3>Column Two</h3>
+      <p>Combine <code>.row</code> and <code>.column</code> to build responsive layouts without writing extra CSS.</p>
+    </div>
+    <div class="column">
+      <h3>Column Three</h3>
+      <p>Add as many columns as you like — they'll share the width equally and stack on small screens.</p>
+    </div>
+  </div>
+
+  <h2>Headings &amp; Text</h2>
+  <h1>Heading 1</h1>
+  <h2>Heading 2</h2>
+  <h3>Heading 3</h3>
+  <h4>Heading 4</h4>
+  <h5>Heading 5</h5>
+  <h6>Heading 6</h6>
+  <p>Regular paragraph text with <strong>bold</strong>, <em>italic</em>, <a href="#">a link</a>, <code>inline code</code>, and <mark>highlighted text</mark>.</p>
+
+  <h2>Lists</h2>
+  <div class="row">
+    <div class="column">
+      <h3>Unordered</h3>
+      <ul>
+        <li>Apples</li>
+        <li>Bananas</li>
+        <li>Cherries</li>
+      </ul>
+    </div>
+    <div class="column">
+      <h3>Ordered</h3>
+      <ol>
+        <li>First item</li>
+        <li>Second item</li>
+        <li>Third item</li>
+      </ol>
+    </div>
+    <div class="column">
+      <h3>Nested</h3>
+      <ul>
+        <li>Fruit
+          <ul>
+            <li>Citrus</li>
+            <li>Stone fruit</li>
+          </ul>
+        </li>
+        <li>Vegetables</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Blockquote</h2>
+  <blockquote>
+    A blockquote is used to highlight quoted text from another source.
+    It typically has a coloured left border and slightly muted text.
+    <footer>— Someone, <cite>Somewhere</cite></footer>
+  </blockquote>
+
+  <h2>Code</h2>
+  <pre><code>package main
+
+import "fmt"
+
+func main() {
+  fmt.Println("Hello, World!")
+}</code></pre>
+
+  <h2>Image</h2>
+  <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='300'%3E%3Crect width='800' height='300' fill='%23e2e8f0'/%3E%3Ctext x='400' y='160' font-family='system-ui' font-size='24' text-anchor='middle' fill='%2364748b'%3E800 × 300 Placeholder%3C/text%3E%3C/svg%3E" alt="A placeholder image demonstrating how images are styled">
+
+  <h2>Table</h2>
+  <table>
+    <tr>
+      <th>Theme</th>
+      <th>Description</th>
+      <th>Type</th>
+    </tr>
+    <tr>
+      <td>default</td>
+      <td>Clean, modern theme</td>
+      <td>Light / Dark</td>
+    </tr>
+    <tr>
+      <td>console</td>
+      <td>Terminal-inspired theme</td>
+      <td>Light / Dark</td>
+    </tr>
+    <tr>
+      <td>minimal</td>
+      <td>Bare-bones reset</td>
+      <td>Light / Dark</td>
+    </tr>
+    <tr>
+      <td>modern</td>
+      <td>Rounded corners, indigo accent</td>
+      <td>Light / Dark</td>
+    </tr>
+  </table>
+
+  <h2>Buttons</h2>
+  <div class="row">
+    <button>Primary</button>
+    <button class="subtle">Subtle</button>
+    <button class="warning">Warning</button>
+  </div>
+
+  <h2>Form Elements</h2>
+  <form>
+    <div class="row">
+      <div class="column">
+        <label for="name">Name:</label><br>
+        <input type="text" id="name" name="name" placeholder="Your name">
+      </div>
+      <div class="column">
+        <label for="email">Email:</label><br>
+        <input type="email" id="email" name="email" placeholder="you@example.com">
+      </div>
+    </div>
+
+    <label for="bio">Bio:</label><br>
+    <textarea id="bio" name="bio" rows="3" placeholder="Tell us about yourself…"></textarea>
+
+    <label for="color">Favourite colour:</label>
+    <select id="color" name="color">
+      <option>Red</option>
+      <option>Green</option>
+      <option>Blue</option>
+    </select>
+
+    <fieldset>
+      <legend>Preferences</legend>
+      <label><input type="checkbox" checked> Email notifications</label><br>
+      <label><input type="radio" name="plan" checked> Free</label><br>
+      <label><input type="radio" name="plan"> Pro</label>
+    </fieldset>
+
+    <button type="submit">Submit</button>
+  </form>
+
+  <hr>
+
+  <p>Switch the <code>Theme()</code> call in <code>main.go</code> between <em>default</em>, <em>console</em>, <em>minimal</em>, and <em>modern</em> to see each variation.</p>
+</body>
+
+</html>

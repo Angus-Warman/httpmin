@@ -12,6 +12,7 @@ import (
 
 	"github.com/Angus-Warman/httpmin/handler"
 	"github.com/Angus-Warman/httpmin/middleware"
+	"github.com/Angus-Warman/httpmin/theme"
 )
 
 type Chassis struct {
@@ -95,6 +96,14 @@ func (c *Chassis) ServeFolder(rootPath string) *Chassis {
 	h := handler.DiskFileServer(rootPath)
 
 	c.Mux.Handle("/", h)
+	return c
+}
+
+func (c *Chassis) Theme(themeName theme.ThemeName) *Chassis {
+	h := theme.ThemeHandler(themeName)
+
+	c.Mux.Handle("GET /theme.css", h)
+
 	return c
 }
 

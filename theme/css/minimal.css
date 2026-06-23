@@ -1,0 +1,62 @@
+:root {
+    --text: #000;
+    --bg: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --text: #e0e0e0;
+        --bg: #121212;
+    }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+    max-width: 48rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+    color: var(--text);
+    background: var(--bg);
+}
+
+a {
+    text-decoration: underline;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+pre,
+code {
+    font-family: "SF Mono", "Fira Code", Menlo, Courier, monospace;
+}
+
+ul,
+ol {
+  padding-left: 1.5rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.column {
+  flex: 1 1 0;
+  min-width: 0;
+}

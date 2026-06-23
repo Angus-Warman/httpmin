@@ -1,0 +1,228 @@
+:root {
+  --text: #1e293b;
+  --text-soft: #64748b;
+  --bg: #f8fafc;
+  --bg-raised: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --heading: #0f172a;
+  --accent-text: #ffffff;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --warning: #d97706;
+  --warning-hover: #b45309;
+  --warning-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e2e8f0;
+    --text-soft: #94a3b8;
+    --bg: #0f172a;
+    --bg-raised: #1e293b;
+    --bg-subtle: #1e293b;
+    --border: #334155;
+    --border-strong: #475569;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --heading: #f1f5f9;
+    --accent-text: #0f172a;
+    --warning: #f59e0b;
+    --warning-hover: #d97706;
+    --warning-text: #0f172a;
+  }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  padding: 1.5rem;
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.25;
+  color: var(--heading);
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+
+p, ul, ol, dl, table, pre, blockquote {
+  margin-bottom: 1rem;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+code, pre {
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, Courier, monospace;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+code {
+  padding: 0.15em 0.3em;
+  font-size: 0.875em;
+}
+
+pre {
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+blockquote {
+  border-left: 4px solid var(--accent);
+  padding-left: 1rem;
+  color: var(--text-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+th, td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+th {
+  background: var(--bg-subtle);
+  font-weight: 600;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr:nth-child(even) td {
+  background: var(--bg);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: var(--border);
+  margin: 2rem 0;
+}
+
+input, textarea, select {
+  font: inherit;
+  padding: 0.6em 0.8em;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+button, input[type="submit"] {
+  font: inherit;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  padding: 0.5em 1.25em;
+  transition: background 0.15s, transform 0.1s;
+}
+
+button:hover, input[type="submit"]:hover {
+  background: var(--accent-hover);
+}
+
+button:active, input[type="submit"]:active {
+  transform: scale(0.97);
+}
+
+.subtle {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 9999px;
+}
+
+.subtle:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.warning {
+  background: var(--warning);
+  color: var(--warning-text);
+}
+
+.warning:hover {
+  background: var(--warning-hover);
+}
+
+ul, ol {
+  padding-left: 1.5rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.column {
+  flex: 1 1 0;
+  min-width: 0;
+}
