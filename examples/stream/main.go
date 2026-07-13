@@ -9,24 +9,23 @@ import (
 	"github.com/Angus-Warman/httpmin/response"
 )
 
-func timeStream(r *http.Request, notify func(string)) error {
-	for {
-		err := r.Context().Err()
+func timeStream(w http.ResponseWriter, r *http.Request) {
+	stream := response.Stream(w, r)
 
-		if err != nil {
-			log.Println(err)
-			return err
+	for {
+		if stream.Closed() {
+			log.Println("stream closed")
+			return
 		}
 
 		now := time.Now()
 
-		log.Println(now.String())
-		notify(now.String())
+		stream.Send(now.String())
 
 		time.Sleep(1 * time.Second)
 	}
 }
 
 func main() {
-	httpmin.New().RouteHandler("/time", response.Stream(timeStream)).Run()
+	httpmin.New().Route("/time", timeStream).Run()
 }
