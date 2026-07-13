@@ -8,22 +8,25 @@ import (
 	"github.com/Angus-Warman/httpmin"
 	"github.com/Angus-Warman/httpmin/handler"
 	"github.com/Angus-Warman/httpmin/middleware"
+	"github.com/Angus-Warman/httpmin/response"
 )
 
 func ping(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
 }
 
-func hello(w http.ResponseWriter, r *http.Request) (any, error) {
+func hello(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 
 	if name == "" {
 		name = "World"
 	}
 
-	return map[string]string{
+	data := map[string]string{
 		"Name": name,
-	}, nil
+	}
+
+	response.Template(tmpls, w, "hello", data)
 }
 
 func secret() http.Handler {
@@ -47,7 +50,8 @@ func myCustomMiddleware() func(http.Handler) http.Handler {
 }
 
 //go:embed templates
-var templatesFS embed.FS
+var templateFiles embed.FS
+var tmpls = response.PrepareTemplate(templateFiles)
 
 func main() {
 	os.Setenv("PASSWORD", "12345")
@@ -55,7 +59,7 @@ func main() {
 	c := httpmin.New().
 		OnPort("8081"). // Port used comes from: env variables, .env file, this function, "8080" (in that order).
 		Route("/ping", ping).
-		RouteHandler("/hello", handler.Template(templatesFS, "hello.tmpl", hello)).
+		Route("/hello", hello).
 		RouteHandler("/stats", handler.Stats()).
 		RouteHandler("/secret", middleware.BasicAuth()(secret())).
 		ServeFolder("public"). // Not embedded, add any file to folder and load the page
