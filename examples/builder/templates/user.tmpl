@@ -1,0 +1,5 @@
+<div id="user-{{.ID}}" class="user">
+    <span class="name">{{.Name}}</span>
+    <span class="status{{if .Active}} active{{end}}">{{if .Active}}Active{{else}}Inactive{{end}}</span>
+    <button class="danger" hx-delete="/api/users/{{.ID}}" hx-swap="outerHTML" hx-target="closest .user">Delete</button>
+</div>

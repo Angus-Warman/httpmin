@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark light">
+    <title>Users</title>
+    <script src="https://unpkg.com/htmx.org"></script>
+</head>
+<body>
+    <h1>Users</h1>
+
+    <form class="add" hx-post="/api/users" hx-target="#users" hx-swap="beforeend" hx-on::after-request="if(event.detail.successful) this.reset()">
+        <input name="name" placeholder="Name" required>
+        <select name="active">
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+        </select>
+        <button type="submit">Add</button>
+    </form>
+
+    <div id="users" hx-get="/api/users" hx-trigger="load"></div>
+</body>
+</html>
