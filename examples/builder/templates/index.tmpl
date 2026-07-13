@@ -12,6 +12,7 @@
 
     <form class="add" hx-post="/api/users" hx-target="#users" hx-swap="beforeend" hx-on::after-request="if(event.detail.successful) this.reset()">
         <input name="name" placeholder="Name" required>
+        <input name="id" type="hidden" value="none">
         <select name="active">
             <option value="true">Active</option>
             <option value="false">Inactive</option>
