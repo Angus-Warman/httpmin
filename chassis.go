@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -71,21 +72,62 @@ func (c *Chassis) RouteHandler(pattern string, handler http.Handler) *Chassis {
 }
 
 // Serves files from embedded directory.
-// Pre-computes gzip data for compressed responses.
-// Serves "clean" URLs, /page -> /page.html
 //
 //	//go:embed all:public
 //	var publicFiles embed.FS
 //	c.ServeEmbedded(publicFiles)
+//
+// / -> /public/index.html
+//
+// /styles.css -> /public/styles.css
+//
+// /page -> /page.html
 func (c *Chassis) ServeEmbedded(folder embed.FS) *Chassis {
-	h, err := handler.EmbeddedFileServer(folder)
+	h := handler.EmbeddedFileServerAtRoot(folder)
+
+	c.Mux.Handle("/", h)
+	return c
+}
+
+// Serves files from embedded directory, with a matching prefix based on the folder name
+//
+//	//go:embed all:static
+//	var staticFiles embed.FS
+//	c.ServeStatic(staticFiles)
+//
+// <link rel="stylesheet" href="/static/styles.css">
+func (c *Chassis) ServeStatic(folder embed.FS) *Chassis {
+	h := handler.EmbeddedFileServer(folder)
+
+	route, err := calculateRoute(folder)
 
 	if err != nil {
 		panic(err)
 	}
 
-	c.Mux.Handle("/", h)
+	c.Mux.Handle(route, h)
 	return c
+}
+
+func calculateRoute(folder embed.FS) (string, error) {
+	entries, err := fs.ReadDir(folder, ".")
+
+	if err != nil {
+		return "", err
+	}
+
+	if len(entries) != 1 {
+		return "", fmt.Errorf("an embedded folder should never have more than one top-level entry")
+	}
+
+	entry := entries[0]
+
+	if !entry.IsDir() {
+		return "", fmt.Errorf("an embedded folder root should be a directory")
+	}
+
+	route := fmt.Sprintf("/%v/", entry.Name())
+	return route, nil
 }
 
 // Serves files from directory.

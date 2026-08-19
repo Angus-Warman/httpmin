@@ -3,7 +3,6 @@ package handler
 import (
 	"bytes"
 	"compress/gzip"
-	"embed"
 	"io"
 	"io/fs"
 	"mime"
@@ -14,19 +13,24 @@ import (
 	"time"
 )
 
-// Pre-computes gzip data for compressed responses
-//
-// Serves "clean" URLs, /page -> /page.html
-func EmbeddedFileServer(folder embed.FS) (http.Handler, error) {
+// Strips the top-level folder, so /static/styles.css is served at /styles.css
+func EmbeddedFileServerAtRoot(folder fs.FS) http.Handler {
 	// By default, embedded folder is expecting a path like "/public/index.html"
 	// Moving down one level results in normal behaviour
 	innerFolder := substituteTopLevelDir(folder)
 
-	fallback := http.FileServerFS(innerFolder)
+	return EmbeddedFileServer(innerFolder)
+}
+
+// Pre-computes gzip data for compressed responses
+//
+// Serves "clean" URLs, /page -> /page.html
+func EmbeddedFileServer(folder fs.FS) http.Handler {
+	fallback := http.FileServerFS(folder)
 	fallback = setLastModified(fallback)
 
 	handler := &embeddedFileServer{
-		folder:       innerFolder,
+		folder:       folder,
 		fallback:     fallback,
 		pathLookup:   make(map[string]string),
 		gzippedFiles: make(map[string][]byte),
@@ -35,10 +39,10 @@ func EmbeddedFileServer(folder embed.FS) (http.Handler, error) {
 	err := handler.build()
 
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	return handler, nil
+	return handler
 }
 
 var serverStartTime = time.Now().UTC().Round(time.Second)
@@ -52,7 +56,7 @@ type embeddedFileServer struct {
 }
 
 func (h *embeddedFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if useStatusNotModified(r) {
+	if isNotModified(r) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
@@ -88,7 +92,7 @@ func (h *embeddedFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.fallback.ServeHTTP(w, r)
 }
 
-func useStatusNotModified(r *http.Request) bool {
+func isNotModified(r *http.Request) bool {
 	ifModifiedSinceStr := r.Header.Get("If-Modified-Since")
 
 	if ifModifiedSinceStr == "" {

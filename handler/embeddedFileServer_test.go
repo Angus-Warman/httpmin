@@ -10,11 +10,7 @@ import (
 var publicFiles embed.FS
 
 func TestIndexServed(t *testing.T) {
-	handler, err := EmbeddedFileServer(publicFiles)
-
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler := EmbeddedFileServerAtRoot(publicFiles)
 
 	r := httptest.NewRequest("GET", "/", nil)
 	r.Header.Add("Accept-Encoding", "gzip")
@@ -30,11 +26,7 @@ func TestIndexServed(t *testing.T) {
 }
 
 func TestCleanURLHandling(t *testing.T) {
-	handler, err := EmbeddedFileServer(publicFiles)
-
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler := EmbeddedFileServerAtRoot(publicFiles)
 
 	r := httptest.NewRequest("GET", "/test", nil)
 	r.Header.Add("Accept-Encoding", "gzip")
@@ -56,11 +48,7 @@ func TestCleanURLHandling(t *testing.T) {
 }
 
 func TestLargeFilesCompressed(t *testing.T) {
-	handler, err := EmbeddedFileServer(publicFiles)
-
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler := EmbeddedFileServerAtRoot(publicFiles)
 
 	r := httptest.NewRequest("GET", "/data.txt", nil)
 	r.Header.Add("Accept-Encoding", "gzip")

@@ -53,6 +53,9 @@ func myCustomMiddleware() func(http.Handler) http.Handler {
 var templateFiles embed.FS
 var tmpls = response.PrepareTemplate(templateFiles)
 
+//go:embed all:static
+var staticFiles embed.FS
+
 func main() {
 	os.Setenv("PASSWORD", "12345")
 
@@ -60,6 +63,7 @@ func main() {
 		OnPort("8081"). // Port used comes from: env variables, .env file, this function, "8080" (in that order).
 		Route("/ping", ping).
 		Route("/hello", hello).
+		ServeStatic(staticFiles).
 		RouteHandler("/stats", handler.Stats()).
 		RouteHandler("/secret", middleware.BasicAuth()(secret())).
 		ServeFolder("public"). // Not embedded, add any file to folder and load the page
