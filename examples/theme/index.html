@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta content="light dark" />
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header>
+        <h2>httpmin: theme</h2>
+
+        <nav class="row">
+            <p>Nav bar</p>
+            <a href="#main" class="active">Home</a>
+            <a href="#footer">About</a>
+        </nav>
+    </header>
+
+    <main id="main">
+        <article class="column">
+            <section class="card">
+                <h3>Components</h3>
+
+                <figure>
+                    <img src="https://picsum.photos/200/300" alt="Image">
+                    <figcaption>Figcaption</figcaption>
+                </figure>
+
+                <blockquote cite="https://example.com/quote">
+                    <p>Blockquote</p>
+                </blockquote>
+
+                <details>
+                    <summary>Details</summary>
+                    <p>Here is the hidden detail content.</p>
+                </details>
+
+                <p>Progress: <progress value="70" max="100"></progress></p>
+                <p>Meter: <meter value="0.6">60%</meter></p>
+            </section>
+
+            <h3>Typography</h3>
+
+            <section>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+                    culpa qui officia deserunt mollit anim id est laborum.</p>
+            </section>
+
+            <section class="row">
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+                    culpa qui officia deserunt mollit anim id est laborum.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+                    culpa qui officia deserunt mollit anim id est laborum.</p>
+            </section>
+
+            <section class="row">
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+                    culpa qui officia deserunt mollit anim id est laborum.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+                    culpa qui officia deserunt mollit anim id est laborum.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore
+                    et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+                    aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse
+                    cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+                    culpa qui officia deserunt mollit anim id est laborum.</p>
+            </section>
+
+            <aside>
+                <h3>Aside</h3>
+            </aside>
+
+            <form class="card">
+                <h3>Inputs</h3>
+
+                <div class="columns">
+                    <label>Text<input type="text" placeholder="required" required></label>
+                    <label>Password <input type="password"></label>
+                    <label>Phone <input type="tel"></label>
+                    <label>Number<input type="number" min="0" max="120"></label>
+                    <label>Date<input type="date"></label>
+                    <label>Time<input type="time"></label>
+                    <label>DateTime-local<input type="datetime-local"></label>
+                    <label>Week<input type="week"></label>
+                    <label>Month<input type="month"></label>
+                    <label>
+                        Select
+                        <select>
+                            <option value="Alpha">Alpha</option>
+                            <option value="Bravo">Bravo</option>
+                            <option value="Charlie">Charlie</option>
+                            <option value="Delta">Delta</option>
+                            <option value="Echo">Echo</option>
+                            <option value="Foxtrot">Foxtrot</option>
+                        </select>
+                    </label>
+                </div>
+            </form>
+
+            <form class="card">
+                <h3>More inputs</h3>
+
+                <label class="row">Color<input type="color"></label>
+                <label>Range<input type="range" min="0" max="100" value="50"></label>
+                <label class="row"><input type="checkbox" checked>Checkbox</label>
+
+                <div>
+                    <label><input type="radio" checked>Radio 1</label>
+                    <label><input type="radio">Radio 2</label>
+                </div>
+
+                <label>
+                    Data list
+                    <input list="symbols">
+                    <datalist id="symbols">
+                        <option value="Alpha">
+                        <option value="Bravo">
+                        <option value="Charlie">
+                        <option value="Delta">
+                        <option value="Echo">
+                        <option value="Foxtrot">
+                    </datalist>
+                </label>
+
+                <label>Files <input type="file" multiple></label>
+
+                <label>Textarea<textarea rows="4" cols="30"></textarea></label>
+
+                <div class="row">
+                    <button type="submit">Submit</button>
+                    <button type="reset">Reset</button>
+                </div>
+            </form>
+        </article>
+
+        <fieldset>
+            <legend>Fieldset title</legend>
+
+            <p>Fieldset</p>
+        </fieldset>
+
+        <section>
+            <h3>Table</h3>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Column 1</th>
+                        <th>Column 2</th>
+                        <th>Column 3</th>
+                        <th>Column 4</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <td>Alfa</td>
+                        <td>Bravo</td>
+                        <td>Charlie</td>
+                        <td>Delta</td>
+                    </tr>
+                    <tr>
+                        <td>Echo</td>
+                        <td>Foxtrot</td>
+                        <td>Golf</td>
+                        <td>Hotel</td>
+                    </tr>
+                    <tr>
+                        <td>India</td>
+                        <td>Juliett</td>
+                        <td>Kilo</td>
+                        <td>Lima</td>
+                    </tr>
+                    <tr>
+                        <td>Mike</td>
+                        <td>November</td>
+                        <td>Oscar</td>
+                        <td>Papa</td>
+                    </tr>
+                    <tr>
+                        <td>Quebec</td>
+                        <td>Romeo</td>
+                        <td>Sierra</td>
+                        <td>Tango</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <footer id="footer" class="centre">
+        <p>&copy; Footer</p>
+    </footer>
+
+</body>
+
+</html>

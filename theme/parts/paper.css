@@ -1,0 +1,160 @@
+:root {
+    --gap: 1rem;
+    --small-gap: 0.5rem;
+    --padding: 1rem;
+    --corner: 0;
+    --max-width: 120ch;
+
+    --background: #f8f6f0;
+    --surface: #fffef9;
+    --elevate: #f0ede4;
+    --border: #2c2416;
+    --text: #0f0c08;
+    --subtle: #4a3f2f;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background: #0f0c08;
+        --surface: #161209;
+        --elevate: #1e1810;
+        --border: #c8bfaa;
+        --text: #f0ece2;
+        --subtle: #8a7d68;
+    }
+}
+
+html {
+    font-family: Georgia, 'Times New Roman', serif;
+    scrollbar-gutter: stable;
+    line-height: 1.7;
+    color: var(--text);
+}
+
+body {
+    background-color: var(--background);
+}
+
+main,
+header,
+footer {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding: var(--padding);
+}
+
+header>nav>a {
+    color: var(--subtle);
+    text-decoration: none;
+    padding: var(--small-gap) var(--gap);
+    border: 1px solid var(--border);
+}
+
+header>nav>a:hover {
+    color: var(--text);
+    background-color: var(--elevate);
+}
+
+.active {
+    color: var(--text);
+    background-color: var(--surface);
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+}
+
+label {
+    display: inherit;
+    flex-direction: inherit;
+    align-items: inherit;
+    gap: var(--small-gap);
+}
+
+input,
+button,
+textarea,
+select {
+    padding: var(--small-gap) var(--gap);
+    border-radius: var(--corner);
+    border: 1px solid var(--border);
+}
+
+input,
+textarea,
+select {
+    background-color: var(--surface);
+}
+
+::placeholder {
+    color: var(--subtle);
+}
+
+figcaption {
+    color: var(--subtle);
+}
+
+button {
+    background-color: var(--elevate);
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+}
+
+button:hover {
+    text-decoration-color: var(--text);
+}
+
+button:active {
+    background-color: var(--surface);
+}
+
+small,
+figcaption,
+caption {
+    color: var(--subtle);
+}
+
+::placeholder {
+    color: var(--subtle);
+}
+
+fieldset {
+    padding: var(--padding);
+    border: 1px solid var(--border);
+    background-color: var(--surface);
+}
+
+legend {
+    color: var(--subtle);
+    font-weight: 600;
+}
+
+.card {
+    padding: var(--padding);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 2px solid var(--border);
+}
+
+th {
+    background-color: var(--elevate);
+    padding: 1rem 2rem;
+    text-align: left;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+}
+
+td {
+    padding: 1rem 2rem;
+    background-color: var(--surface);
+    border-top: 1px solid var(--border);
+}

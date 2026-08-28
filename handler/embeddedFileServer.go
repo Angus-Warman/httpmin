@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"bytes"
-	"compress/gzip"
 	"io"
 	"io/fs"
 	"mime"
@@ -216,27 +214,6 @@ func shouldZip(ext string) bool {
 	default:
 		return false
 	}
-}
-
-func gzipBytes(fileBytes []byte) ([]byte, error) {
-	var buf bytes.Buffer
-
-	zw := gzip.NewWriter(&buf)
-
-	_, err := zw.Write(fileBytes)
-
-	if err != nil {
-		zw.Close()
-		return nil, err
-	}
-
-	err = zw.Close() // Flushes
-
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
 
 func setLastModified(next http.Handler) http.Handler {
