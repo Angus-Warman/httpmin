@@ -2,7 +2,6 @@ package response
 
 import (
 	"bufio"
-	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
@@ -13,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 )
 
@@ -33,12 +33,20 @@ type WebSocketConnection struct {
 	// MaxMessageSize caps the total size of a reassembled (possibly fragmented)
 	// message. Defaults to 16 MB
 	MaxMessageSize int64
+	subprotocol    string
 	rwc            net.Conn
 	br             *bufio.Reader
+	bw             *bufio.Writer
+	readGate       chan struct{} // serializes reads and the close-handshake drain
 	writeMu        sync.Mutex
 	closeSent      bool
 	closeRecv      bool
 	closeMu        sync.Mutex
+}
+
+// Subprotocol returns the subprotocol negotiated during the handshake.
+func (ws *WebSocketConnection) Subprotocol() string {
+	return ws.subprotocol
 }
 
 // Safe for concurrent use
@@ -61,7 +69,7 @@ func (ws *WebSocketConnection) SendBytes(data []byte) error {
 	return ws.writeFrameLocked(true, opcode, data)
 }
 
-// Must be called from a single goroutine only
+// Reads are serialized, concurrent calls are queued..
 func (ws *WebSocketConnection) Read() (string, error) {
 	msg, err := ws.ReadMessage()
 
@@ -76,7 +84,7 @@ func (ws *WebSocketConnection) Read() (string, error) {
 	return string(msg.Payload), nil
 }
 
-// Must be called from a single goroutine only
+// Reads are serialized, concurrent calls are queued..
 func (ws *WebSocketConnection) ReadBytes() ([]byte, error) {
 	msg, err := ws.readMessageInternal()
 
@@ -92,7 +100,7 @@ type WebSocketMessage struct {
 	IsBinary bool
 }
 
-// Must be called from a single goroutine only
+// Reads are serialized, concurrent calls are queued..
 func (ws *WebSocketConnection) ReadMessage() (WebSocketMessage, error) {
 	var zero WebSocketMessage
 
@@ -110,13 +118,82 @@ func (ws *WebSocketConnection) ReadMessage() (WebSocketMessage, error) {
 	}, err
 }
 
+// Close performs the WebSocket closing handshake and then closes the
+// underlying connection. It is safe for concurrent use, additional calls are
+// no-ops.
+//
+// After sending the close frame it briefly waits for the peer's close frame
+// so the peer observes a clean closure instead of an abnormal one.
 func (ws *WebSocketConnection) Close() error {
-	code := statusNormalClosure
-	reason := "closing"
+	return ws.closeWith(statusNormalClosure, "closing")
+}
 
-	err := ws.sendCloseFrame(code, reason)
+func (ws *WebSocketConnection) closeWith(code int, reason string) error {
+	sent, err := ws.sendCloseFrame(code, reason)
+	if err != nil {
+		ws.rwc.Close()
+		return err
+	}
+	if !sent {
+		// A close frame was already sent (peer-close echo, protocol error or an
+		// earlier Close). Just release the socket; the handshake is complete.
+		ws.rwc.Close()
+		return nil
+	}
+
+	// Complete the handshake by waiting for the peer's close frame, unless an
+	// application read is in progress: that read will observe the close frame
+	// and finish the handshake itself. Only drain when the read side is idle.
+	if ws.tryLockReadGate() {
+		ws.drainUntilClose()
+		ws.unlockReadGate()
+	}
 	ws.rwc.Close()
-	return err
+	return nil
+}
+
+// drainUntilClose reads and discards frames until the peer's close frame
+// arrives or the handshake deadline passes. Ping frames are answered so the
+// peer keeps functioning during the handshake. The caller must hold the read
+// gate. Errors end the drain early; the peer has already received our close
+// frame.
+func (ws *WebSocketConnection) drainUntilClose() {
+	_ = ws.rwc.SetReadDeadline(time.Now().Add(closeHandshakeTimeout))
+	defer ws.rwc.SetReadDeadline(time.Time{})
+
+	var buf []byte
+	for {
+		f, err := ws.readFrameInto(&buf)
+		if err != nil {
+			return
+		}
+		switch f.opcode {
+		case opClose:
+			return
+		case opPing:
+			_ = ws.WritePong(f.payload)
+		}
+	}
+}
+
+const closeHandshakeTimeout = 5 * time.Second
+
+// failConnection tears down the connection with a close frame carrying status.
+// It never blocks behind a concurrent writer: if the write mutex is held, it
+// closes the socket directly, which unblocks that writer with an error.
+func (ws *WebSocketConnection) failConnection(status int, reason string) {
+	payload := encodeClosePayload(status, reason)
+
+	ws.closeMu.Lock()
+	first := !ws.closeSent
+	ws.closeSent = true
+	ws.closeMu.Unlock()
+
+	if first && ws.writeMu.TryLock() {
+		_ = ws.writeFrameLocked(true, opClose, payload)
+		ws.writeMu.Unlock()
+	}
+	ws.rwc.Close()
 }
 
 // opCode identifies the type of a WebSocket frame, per RFC 6455 section 5.2.
@@ -181,28 +258,38 @@ func newProtocolErr(status int, format string, args ...any) *protocolError {
 
 // After a successful call, the caller owns the connection and must eventually call Close.
 func upgrade(w http.ResponseWriter, r *http.Request) (*WebSocketConnection, error) {
+	if !r.ProtoAtLeast(1, 1) {
+		http.Error(w, "websocket: handshake requires HTTP/1.1 or later", http.StatusUpgradeRequired)
+		return nil, errors.New("websocket: handshake requires HTTP/1.1 or later")
+	}
 	if !strings.EqualFold(r.Method, "GET") {
 		http.Error(w, "websocket: method must be GET", http.StatusMethodNotAllowed)
 		return nil, errors.New("websocket: method must be GET")
 	}
 	if !headerContainsToken(r.Header, "Connection", "upgrade") {
-		http.Error(w, "websocket: missing Connection: Upgrade", http.StatusBadRequest)
+		http.Error(w, "websocket: missing Connection: Upgrade", http.StatusUpgradeRequired)
 		return nil, errors.New("websocket: missing Connection: Upgrade header")
 	}
-	if !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		http.Error(w, "websocket: missing Upgrade: websocket", http.StatusBadRequest)
+	if !headerContainsToken(r.Header, "Upgrade", "websocket") {
+		http.Error(w, "websocket: missing Upgrade: websocket", http.StatusUpgradeRequired)
 		return nil, errors.New("websocket: missing Upgrade: websocket header")
 	}
 	if r.Header.Get("Sec-WebSocket-Version") != "13" {
 		w.Header().Set("Sec-WebSocket-Version", "13")
-		http.Error(w, "websocket: unsupported version", http.StatusUpgradeRequired)
+		http.Error(w, "websocket: unsupported version", http.StatusBadRequest)
 		return nil, errors.New("websocket: unsupported Sec-WebSocket-Version")
 	}
-	key := r.Header.Get("Sec-WebSocket-Key")
-	if key == "" {
+	keys := r.Header.Values("Sec-WebSocket-Key")
+	if len(keys) == 0 {
 		http.Error(w, "websocket: missing Sec-WebSocket-Key", http.StatusBadRequest)
 		return nil, errors.New("websocket: missing Sec-WebSocket-Key")
 	}
+	if len(keys) > 1 {
+		http.Error(w, "websocket: multiple Sec-WebSocket-Key headers", http.StatusBadRequest)
+		return nil, errors.New("websocket: multiple Sec-WebSocket-Key headers")
+	}
+	// The RFC states to remove any leading or trailing whitespace.
+	key := strings.TrimSpace(keys[0])
 	decodedKey, err := base64.StdEncoding.DecodeString(key)
 	if err != nil || len(decodedKey) != 16 {
 		http.Error(w, "websocket: invalid Sec-WebSocket-Key", http.StatusBadRequest)
@@ -216,6 +303,7 @@ func upgrade(w http.ResponseWriter, r *http.Request) (*WebSocketConnection, erro
 	}
 
 	accept := computeAcceptKey(key)
+	subprotocol := selectSubprotocol(r)
 
 	rwc, brw, err := hj.Hijack()
 	if err != nil {
@@ -225,7 +313,11 @@ func upgrade(w http.ResponseWriter, r *http.Request) (*WebSocketConnection, erro
 	resp := "HTTP/1.1 101 Switching Protocols\r\n" +
 		"Upgrade: websocket\r\n" +
 		"Connection: Upgrade\r\n" +
-		"Sec-WebSocket-Accept: " + accept + "\r\n\r\n"
+		"Sec-WebSocket-Accept: " + accept + "\r\n"
+	if subprotocol != "" {
+		resp += "Sec-WebSocket-Protocol: " + subprotocol + "\r\n"
+	}
+	resp += "\r\n"
 
 	if _, err := brw.WriteString(resp); err != nil {
 		rwc.Close()
@@ -241,12 +333,31 @@ func upgrade(w http.ResponseWriter, r *http.Request) (*WebSocketConnection, erro
 	// brw.Reader may already have buffered bytes the client sent immediately
 	// after the handshake (some clients pipeline). Reuse it rather than
 	// wrapping rwc in a fresh bufio.Reader, or we'd drop that buffered data.
+	// The bufio.Writer is likewise reused for buffered frame writes.
 	c := &WebSocketConnection{
+		subprotocol:    subprotocol,
 		rwc:            rwc,
 		br:             brw.Reader,
+		bw:             brw.Writer,
+		readGate:       make(chan struct{}, 1),
 		MaxMessageSize: defaultMaxMessageSize,
 	}
 	return c, nil
+}
+
+// selectSubprotocol picks the protocol to negotiate. httpmin does not define
+// its own subprotocols, so it echoes the first one the client offers; per
+// RFC 6455 4.2.2 the server must select one of the offers or fail the
+// handshake, and browsers abort the connection if a requested subprotocol
+// goes unanswered.
+func selectSubprotocol(r *http.Request) string {
+	for part := range strings.SplitSeq(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+		token := strings.TrimSpace(part)
+		if token != "" {
+			return token
+		}
+	}
+	return ""
 }
 
 func computeAcceptKey(clientKey string) string {
@@ -270,7 +381,13 @@ func headerContainsToken(h http.Header, name, token string) bool {
 	return false
 }
 
-func (ws *WebSocketConnection) readFrame() (frame, error) {
+// readFrameInto reads a single decoded frame. Data frames (text, binary and
+// continuation) append their payload onto *message so fragmented frames
+// accumulate without a per-frame allocation, and a single-frame message avoids
+// the extra copy of reading into an intermediate buffer. Control frame
+// payloads are returned in their own small allocation so they never contaminate
+// the message buffer.
+func (ws *WebSocketConnection) readFrameInto(message *[]byte) (frame, error) {
 	var zero frame
 
 	var hdr [2]byte
@@ -342,96 +459,116 @@ func (ws *WebSocketConnection) readFrame() (frame, error) {
 		}
 	}
 
-	payload := make([]byte, payloadLen)
-	if _, err := io.ReadFull(ws.br, payload); err != nil {
-		return zero, err
-	}
-	if masked {
-		applyMask(payload, maskKey)
+	if opcode.isControl() {
+		payload := make([]byte, payloadLen)
+		if payloadLen > 0 {
+			if _, err := io.ReadFull(ws.br, payload); err != nil {
+				return zero, err
+			}
+			if masked {
+				applyMask(payload, maskKey)
+			}
+		}
+		return frame{fin: fin, opcode: opcode, payload: payload}, nil
 	}
 
-	return frame{
-		fin:     fin,
-		opcode:  opcode,
-		payload: payload,
-	}, nil
+	start := len(*message)
+	*message = append(*message, make([]byte, payloadLen)...)
+	if payloadLen > 0 {
+		payload := (*message)[start:]
+		if _, err := io.ReadFull(ws.br, payload); err != nil {
+			return zero, err
+		}
+		if masked {
+			applyMask(payload, maskKey)
+		}
+	}
+	return frame{fin: fin, opcode: opcode, payload: (*message)[start:]}, nil
 }
 
 // applyMask XORs payload in place with the rolling 4-byte mask key, per
-// RFC 6455 section 5.3.
+// RFC 6455 section 5.3. The 4-byte key repeats every 4 bytes, so 8 bytes of
+// payload are processed per iteration with a widened key.
 func applyMask(payload []byte, key [4]byte) {
-	for i := range payload {
-		payload[i] ^= key[i%4]
+	k := binary.LittleEndian.Uint32(key[:])
+	k8 := uint64(k)<<32 | uint64(k)
+
+	i := 0
+	for ; i+8 <= len(payload); i += 8 {
+		v := binary.LittleEndian.Uint64(payload[i:])
+		binary.LittleEndian.PutUint64(payload[i:], v^k8)
+	}
+	for ; i < len(payload); i++ {
+		payload[i] ^= byte(k >> (8 * (uint(i) & 3)))
 	}
 }
 
-// writeFrame encodes and writes a single frame. Caller must hold writeMu.
+// writeFrameLocked encodes and writes a single frame and flushes it to the
+// socket. Caller must hold writeMu. Frames are always unmasked because the
+// server never masks (RFC 6455 5.1).
 func (ws *WebSocketConnection) writeFrameLocked(fin bool, opcode opCode, payload []byte) error {
-	var hdr []byte
 	b0 := byte(opcode)
 	if fin {
 		b0 |= 0x80
 	}
-	hdr = append(hdr, b0)
-
-	maskBit := byte(0)
+	if err := ws.bw.WriteByte(b0); err != nil {
+		return err
+	}
 
 	n := len(payload)
 	switch {
 	case n <= 125:
-		hdr = append(hdr, maskBit|byte(n))
-	case n <= 65535:
-		hdr = append(hdr, maskBit|126)
-		var ext [2]byte
-		binary.BigEndian.PutUint16(ext[:], uint16(n))
-		hdr = append(hdr, ext[:]...)
-	default:
-		hdr = append(hdr, maskBit|127)
-		var ext [8]byte
-		binary.BigEndian.PutUint64(ext[:], uint64(n))
-		hdr = append(hdr, ext[:]...)
-	}
-
-	if _, err := ws.rwc.Write(hdr); err != nil {
-		return err
-	}
-
-	if maskBit != 0 {
-		var key [4]byte
-		rand.Read(key[:])
-		masked := make([]byte, len(payload))
-		copy(masked, payload)
-		applyMask(masked, key)
-		if _, err := ws.rwc.Write(key[:]); err != nil {
+		if err := ws.bw.WriteByte(byte(n)); err != nil {
 			return err
 		}
-		if len(masked) > 0 {
-			if _, err := ws.rwc.Write(masked); err != nil {
-				return err
-			}
+	case n <= 65535:
+		if err := ws.bw.WriteByte(126); err != nil {
+			return err
 		}
-		return nil
+		var ext [2]byte
+		binary.BigEndian.PutUint16(ext[:], uint16(n))
+		if _, err := ws.bw.Write(ext[:]); err != nil {
+			return err
+		}
+	default:
+		if err := ws.bw.WriteByte(127); err != nil {
+			return err
+		}
+		var ext [8]byte
+		binary.BigEndian.PutUint64(ext[:], uint64(n))
+		if _, err := ws.bw.Write(ext[:]); err != nil {
+			return err
+		}
 	}
 
 	if len(payload) > 0 {
-		if _, err := ws.rwc.Write(payload); err != nil {
+		if _, err := ws.bw.Write(payload); err != nil {
 			return err
 		}
 	}
-	return nil
+	return ws.bw.Flush()
 }
 
 // writeControl sends a control frame (ping/pong/close). Safe for concurrent
-// use; serialized against WriteMessage via the same mutex so frames never
+// use; serialized against Send/SendBytes via the same mutex so frames never
 // interleave on the wire.
+//
+// Control writes are bounded by a deadline so a stuck peer can't wedge the
+// write mutex forever.
 func (ws *WebSocketConnection) writeControl(opcode opCode, payload []byte) error {
 	if len(payload) > maxControlFramePayload {
 		return fmt.Errorf("websocket: control frame payload exceeds %d bytes", maxControlFramePayload)
 	}
 	ws.writeMu.Lock()
 	defer ws.writeMu.Unlock()
+
+	_ = ws.rwc.SetWriteDeadline(time.Now().Add(closeControlTimeout))
+	defer ws.rwc.SetWriteDeadline(time.Time{})
+
 	return ws.writeFrameLocked(true, opcode, payload)
 }
+
+const closeControlTimeout = 5 * time.Second
 
 // WritePing sends a ping control frame with an optional payload (<=125 bytes).
 func (ws *WebSocketConnection) WritePing(payload []byte) error {
@@ -455,8 +592,11 @@ type socketMessage struct {
 // returns io.EOF (or a wrapped close error) when the peer closes the
 // connection.
 //
-// Must be called from a single goroutine at a time.
+// Concurrent calls are serialized by the read gate.
 func (ws *WebSocketConnection) readMessageInternal() (socketMessage, error) {
+	ws.lockReadGate()
+	defer ws.unlockReadGate()
+
 	var (
 		zero      socketMessage
 		msgOpcode opCode
@@ -465,12 +605,11 @@ func (ws *WebSocketConnection) readMessageInternal() (socketMessage, error) {
 	)
 
 	for {
-		f, err := ws.readFrame()
+		f, err := ws.readFrameInto(&buf)
 		if err != nil {
 			var pe *protocolError
 			if errors.As(err, &pe) {
-				_ = ws.sendCloseFrame(pe.status, pe.msg)
-				ws.rwc.Close()
+				ws.failConnection(pe.status, pe.msg)
 			}
 			return zero, err
 		}
@@ -480,17 +619,14 @@ func (ws *WebSocketConnection) readMessageInternal() (socketMessage, error) {
 			if err := ws.WritePong(f.payload); err != nil {
 				return zero, err
 			}
-			continue
 
 		case opPong:
 			// Unsolicited pongs are valid, nothing to do
-			continue
 
 		case opClose:
 			code, reason, perr := parseClosePayload(f.payload)
 			if perr != nil {
-				_ = ws.sendCloseFrame(statusProtocolError, "invalid close payload")
-				ws.rwc.Close()
+				ws.failConnection(statusProtocolError, "invalid close payload")
 				return zero, perr
 			}
 			ws.closeMu.Lock()
@@ -499,42 +635,37 @@ func (ws *WebSocketConnection) readMessageInternal() (socketMessage, error) {
 			ws.closeMu.Unlock()
 			if !alreadySent {
 				// Echo the close frame back (RFC 6455 5.5.1 closing handshake).
-				_ = ws.sendCloseFrame(code, reason)
+				ws.failConnection(code, reason)
+			} else {
+				ws.rwc.Close()
 			}
-			ws.rwc.Close()
 			return zero, &closeError{Code: code, Reason: reason}
 
 		case opText, opBinary:
 			if started {
 				return zero, newProtocolErr(statusProtocolError, "new message started before previous one finished")
 			}
-			msgOpcode = f.opcode
-			buf = append(buf, f.payload...)
 			if int64(len(buf)) > ws.MaxMessageSize {
-				_ = ws.sendCloseFrame(statusMessageTooBig, "message too big")
-				ws.rwc.Close()
+				ws.failConnection(statusMessageTooBig, "message exceeds max size")
 				return zero, newProtocolErr(statusMessageTooBig, "message exceeds max size")
 			}
+			msgOpcode = f.opcode
 			if f.fin {
 				return ws.finishMessage(msgOpcode, buf)
 			}
 			started = true
-			continue
 
 		case opContinuation:
 			if !started {
 				return zero, newProtocolErr(statusProtocolError, "continuation frame without preceding start frame")
 			}
-			buf = append(buf, f.payload...)
 			if int64(len(buf)) > ws.MaxMessageSize {
-				_ = ws.sendCloseFrame(statusMessageTooBig, "message too big")
-				ws.rwc.Close()
+				ws.failConnection(statusMessageTooBig, "message exceeds max size")
 				return zero, newProtocolErr(statusMessageTooBig, "message exceeds max size")
 			}
 			if f.fin {
 				return ws.finishMessage(msgOpcode, buf)
 			}
-			continue
 		}
 	}
 }
@@ -543,8 +674,7 @@ func (ws *WebSocketConnection) readMessageInternal() (socketMessage, error) {
 // frames, per RFC 6455 8.1) before handing it to the caller.
 func (ws *WebSocketConnection) finishMessage(op opCode, payload []byte) (socketMessage, error) {
 	if op == opText && !utf8.Valid(payload) {
-		_ = ws.sendCloseFrame(statusInvalidPayload, "invalid UTF-8 in text message")
-		ws.rwc.Close()
+		ws.failConnection(statusInvalidPayload, "invalid UTF-8 in text message")
 		return socketMessage{}, newProtocolErr(statusInvalidPayload, "invalid UTF-8 in text message")
 	}
 	return socketMessage{op: op, payload: payload}, nil
@@ -589,7 +719,8 @@ func isValidCloseCode(code int) bool {
 		return false // reserved
 	case code >= 1000 && code <= 1003:
 		return true
-	case code >= 1007 && code <= 1011:
+	case code >= 1007 && code <= 1014:
+		// 1012-1014 are registered (Service Restart, Try Again Later, Bad Gateway)
 		return true
 	case code >= 3000 && code <= 4999:
 		return true // reserved for libraries/frameworks/private use
@@ -598,25 +729,28 @@ func isValidCloseCode(code int) bool {
 	}
 }
 
-// sendCloseFrame sends a close frame unless one has already been sent for
-// this connection (each side sends at most one close frame per handshake).
-func (ws *WebSocketConnection) sendCloseFrame(code int, reason string) error {
+// sendCloseFrame sends a close frame unless one has already been sent for this
+// connection (each side sends at most one close frame per handshake). It
+// reports whether the frame was actually sent.
+func (ws *WebSocketConnection) sendCloseFrame(code int, reason string) (bool, error) {
 	ws.closeMu.Lock()
 	if ws.closeSent {
 		ws.closeMu.Unlock()
-		return nil
+		return false, nil
 	}
 	ws.closeSent = true
 	ws.closeMu.Unlock()
 
+	return true, ws.writeControl(opClose, encodeClosePayload(code, reason))
+}
+
+// encodeClosePayload builds the wire payload for a close frame. Reserved codes
+// (1005/1006) that must never appear on the wire map to a bare close frame
+// with no payload (RFC 6455 7.4.1); the reason is truncated so the total
+// payload stays within the control frame limit.
+func encodeClosePayload(code int, reason string) []byte {
 	if code == statusNoStatusReceived || code == statusAbnormalClosure {
-		// 1005/1006 are reserved for local use only and must never be sent
-		// on the wire (RFC 6455 7.4.1). This happens when the peer's close
-		// frame had no status (represented internally as 1005) and we're
-		// echoing it back - send a bare close frame with no payload instead
-		// of leaking 1005/1006 onto the wire.
-		var empty []byte
-		return ws.writeControl(opClose, empty)
+		return nil
 	}
 	payload := make([]byte, 2+len(reason))
 	binary.BigEndian.PutUint16(payload[:2], uint16(code))
@@ -624,5 +758,24 @@ func (ws *WebSocketConnection) sendCloseFrame(code int, reason string) error {
 	if len(payload) > maxControlFramePayload {
 		payload = payload[:maxControlFramePayload]
 	}
-	return ws.writeControl(opClose, payload)
+	return payload
+}
+
+// The read gate serializes access to the socket's read side so application
+// reads and the close-handshake drain never consume each other's frames.
+func (ws *WebSocketConnection) lockReadGate() {
+	ws.readGate <- struct{}{}
+}
+
+func (ws *WebSocketConnection) unlockReadGate() {
+	<-ws.readGate
+}
+
+func (ws *WebSocketConnection) tryLockReadGate() bool {
+	select {
+	case ws.readGate <- struct{}{}:
+		return true
+	default:
+		return false
+	}
 }

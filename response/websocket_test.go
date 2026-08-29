@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,14 +28,18 @@ func echo(conn *WebSocketConnection) {
 	}
 }
 
-func startEchoServer(t *testing.T) string {
+func startServer(t *testing.T, fn func(*WebSocketConnection)) string {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.Handle("/", WebSocket(echo))
+	mux.Handle("/", WebSocket(fn))
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return strings.TrimPrefix(srv.URL, "http://")
+}
+
+func startEchoServer(t *testing.T) string {
+	return startServer(t, echo)
 }
 
 type rawClient struct {
@@ -291,5 +296,173 @@ func TestUnmaskedClientFrameIsRejected(t *testing.T) {
 	code := binary.BigEndian.Uint16(got.payload[:2])
 	if code != statusProtocolError {
 		t.Errorf("close code = %d, want %d", code, statusProtocolError)
+	}
+}
+
+// dialRaw performs a raw HTTP handshake and returns the client and the parsed
+// response so tests can inspect status codes and headers.
+func dialRaw(t *testing.T, addr string, req string) (*rawClient, *http.Response) {
+	t.Helper()
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if _, err := conn.Write([]byte(req)); err != nil {
+		t.Fatalf("write handshake: %v", err)
+	}
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, nil)
+	if err != nil {
+		t.Fatalf("read handshake response: %v", err)
+	}
+	return &rawClient{conn: conn, br: br}, resp
+}
+
+func handshakeRequest(addr string, extraHeaders string) string {
+	keyBytes := make([]byte, 16)
+	rand.Read(keyBytes)
+	key := base64.StdEncoding.EncodeToString(keyBytes)
+	return "GET / HTTP/1.1\r\n" +
+		"Host: " + addr + "\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Key: " + key + "\r\n" +
+		"Sec-WebSocket-Version: 13\r\n" +
+		extraHeaders + "\r\n"
+}
+
+func TestSubprotocolIsEchoed(t *testing.T) {
+	addr := startEchoServer(t)
+	c, resp := dialRaw(t, addr, handshakeRequest(addr, "Sec-WebSocket-Protocol: chat, superchat\r\n"))
+	defer c.conn.Close()
+
+	if resp.StatusCode != 101 {
+		t.Fatalf("status = %d, want 101", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Sec-WebSocket-Protocol"); got != "chat" {
+		t.Errorf("Sec-WebSocket-Protocol = %q, want first offered protocol %q", got, "chat")
+	}
+}
+
+func TestHandshakeRejectsHTTP10(t *testing.T) {
+	addr := startEchoServer(t)
+	req := "GET / HTTP/1.0\r\n" +
+		"Host: " + addr + "\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Key: AAAAAAAAAAAAAAAAAAAAAA==\r\n" +
+		"Sec-WebSocket-Version: 13\r\n\r\n"
+	_, resp := dialRaw(t, addr, req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUpgradeRequired {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusUpgradeRequired)
+	}
+}
+
+func TestDuplicateSecWebSocketKeyRejected(t *testing.T) {
+	addr := startEchoServer(t)
+	req := "GET / HTTP/1.1\r\n" +
+		"Host: " + addr + "\r\n" +
+		"Upgrade: websocket\r\n" +
+		"Connection: Upgrade\r\n" +
+		"Sec-WebSocket-Key: AAAAAAAAAAAAAAAAAAAAAA==\r\n" +
+		"Sec-WebSocket-Key: BBBBBBBBBBBBBBBBBBBBBB==\r\n" +
+		"Sec-WebSocket-Version: 13\r\n\r\n"
+	_, resp := dialRaw(t, addr, req)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestRegisteredCloseCodesAreAccepted(t *testing.T) {
+	for _, code := range []int{1012, 1013, 1014} {
+		t.Run(fmt.Sprintf("code-%d", code), func(t *testing.T) {
+			addr := startEchoServer(t)
+			c := dialAndHandshake(t, addr)
+			defer c.conn.Close()
+
+			payload := make([]byte, 2)
+			binary.BigEndian.PutUint16(payload, uint16(code))
+			c.writeClientFrame(t, true, opClose, payload)
+
+			got := c.readServerFrame(t)
+			if got.opcode != opClose {
+				t.Fatalf("opcode = %v, want OpClose", got.opcode)
+			}
+			gotCode := binary.BigEndian.Uint16(got.payload[:2])
+			if gotCode != uint16(code) {
+				t.Errorf("echoed close code = %d, want %d (must not fail with 1002)", gotCode, code)
+			}
+		})
+	}
+}
+
+func TestApplyMask(t *testing.T) {
+	key := [4]byte{0xde, 0xad, 0xbe, 0xef}
+	for n := 0; n <= 40; n++ {
+		payload := make([]byte, n)
+		rand.Read(payload)
+		orig := append([]byte(nil), payload...)
+
+		applyMask(payload, key)
+
+		// Unmask with a straightforward byte-by-byte reference and compare.
+		for i := range payload {
+			payload[i] ^= key[i%4]
+		}
+		if !bytes.Equal(payload, orig) {
+			t.Fatalf("mask/unmask mismatch for length %d", n)
+		}
+	}
+}
+
+func closeAfterFirstRead(conn *WebSocketConnection) {
+	if _, err := conn.Read(); err != nil {
+		return
+	}
+	conn.Close()
+}
+
+func TestAppInitiatedCloseAwaitsCloseEcho(t *testing.T) {
+	addr := startServer(t, closeAfterFirstRead)
+	c := dialAndHandshake(t, addr)
+	defer c.conn.Close()
+
+	c.writeClientFrame(t, true, opText, []byte("hi"))
+
+	// The server reads our message and closes; its close frame arrives first.
+	got := c.readServerFrame(t)
+	if got.opcode != opClose {
+		t.Fatalf("opcode = %v, want OpClose", got.opcode)
+	}
+	code := binary.BigEndian.Uint16(got.payload[:2])
+	if code != statusNormalClosure {
+		t.Errorf("close code = %d, want %d", code, statusNormalClosure)
+	}
+
+	// Because the server is completing the closing handshake it must keep the
+	// socket open, waiting for our close echo, rather than closing immediately.
+	c.conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	var one [1]byte
+	_, err := c.conn.Read(one[:])
+	if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
+		t.Fatalf("server closed the socket before receiving our close echo: %v", err)
+	}
+	c.conn.SetReadDeadline(time.Time{})
+
+	// Complete the handshake; the server should now release the socket.
+	payload := make([]byte, 2)
+	binary.BigEndian.PutUint16(payload, statusNormalClosure)
+	c.writeClientFrame(t, true, opClose, payload)
+
+	c.conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	defer c.conn.SetReadDeadline(time.Time{})
+	for {
+		if _, err := c.conn.Read(one[:]); err != nil {
+			return // server finished the handshake and closed
+		}
 	}
 }
