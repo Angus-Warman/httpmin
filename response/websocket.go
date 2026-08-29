@@ -69,7 +69,7 @@ func (ws *WebSocketConnection) SendBytes(data []byte) error {
 	return ws.writeFrameLocked(true, opcode, data)
 }
 
-// Reads are serialized, concurrent calls are queued..
+// Reads are serialized, concurrent calls are queued.
 func (ws *WebSocketConnection) Read() (string, error) {
 	msg, err := ws.ReadMessage()
 
@@ -84,7 +84,7 @@ func (ws *WebSocketConnection) Read() (string, error) {
 	return string(msg.Payload), nil
 }
 
-// Reads are serialized, concurrent calls are queued..
+// Reads are serialized, concurrent calls are queued.
 func (ws *WebSocketConnection) ReadBytes() ([]byte, error) {
 	msg, err := ws.readMessageInternal()
 
@@ -100,7 +100,7 @@ type WebSocketMessage struct {
 	IsBinary bool
 }
 
-// Reads are serialized, concurrent calls are queued..
+// Reads are serialized, concurrent calls are queued.
 func (ws *WebSocketConnection) ReadMessage() (WebSocketMessage, error) {
 	var zero WebSocketMessage
 

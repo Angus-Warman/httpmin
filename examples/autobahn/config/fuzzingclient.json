@@ -1,0 +1,12 @@
+{
+    "outdir": "/reports",
+    "servers": [
+        {
+            "agent": "httpmin-websocket",
+            "url": "ws://localhost:9001/echo"
+        }
+    ],
+    "cases": ["*"],
+    "exclude-cases": [],
+    "exclude-agent-cases": {}
+}
